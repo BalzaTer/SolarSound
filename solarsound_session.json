@@ -1,0 +1,92 @@
+{
+  "version": 2,
+  "window": {
+    "x": 0,
+    "y": 23,
+    "width": 1920,
+    "height": 1009,
+    "screen_name": "SONY TV",
+    "maximized": true
+  },
+  "playlist_tracks": [
+    "D:/Musique/Musique Chaîne HI-FI/Michael Jackson\\Track001.MP3"
+  ],
+  "current_index": 0,
+  "play_mode": "RANDOM",
+  "volume": 43,
+  "spatial_config": {
+    "gain_fl": 1.0,
+    "gain_fr": 1.0,
+    "gain_c": 0.0,
+    "gain_lfe": 0.59,
+    "gain_sl": 0.8,
+    "gain_sr": 0.8,
+    "double_front_to_surround": true,
+    "surround_blend": 0.56,
+    "mix_to_lfe": true,
+    "lfe_low_pass_hz": 80.0,
+    "lfe_gain": 0.27,
+    "master_volume": 0.43,
+    "rotation_enabled": false,
+    "rotation_speed": 0.1,
+    "rotation_spread": 0.5,
+    "stereo_separation": 1.0,
+    "mix_mono": false,
+    "invert_stereo": false
+  },
+  "vinyl_config": {
+    "enabled": false,
+    "motor_speed": 1.0,
+    "motor_random": 0.001,
+    "wow_amount": 0.003,
+    "wow_rate": 0.8,
+    "flutter_amount": 0.001,
+    "flutter_rate": 7.0,
+    "crackle_density": 30.0,
+    "crackle_amplitude": 0.08,
+    "crackle_duration_ms": 3.0,
+    "hiss_level": 0.004
+  },
+  "shortcuts": {
+    "play_pause": "Space",
+    "stop": "Escape",
+    "next": "Right",
+    "prev": "Left",
+    "seek_fwd_5": "Ctrl+Right",
+    "seek_bwd_5": "Ctrl+Left",
+    "seek_fwd_60": "Shift+Right",
+    "seek_bwd_60": "Shift+Left",
+    "volume_up": "Up",
+    "volume_down": "Down",
+    "mute": "M",
+    "fullscreen": "F",
+    "next_frame": "Period",
+    "prev_frame": "Comma",
+    "speed_up": "Ctrl+Up",
+    "speed_down": "Ctrl+Down",
+    "speed_reset": "Ctrl+0",
+    "open_file": "Ctrl+O",
+    "save_playlist": "Ctrl+S",
+    "close": "Ctrl+Q"
+  },
+  "colors": {
+    "bg_main": "#0f0d0a",
+    "bg_secondary": "#1e1a12",
+    "bg_list": "#0c0a07",
+    "accent": "#f5a623",
+    "accent_dark": "#c47d0a",
+    "text_primary": "#e8d5a0",
+    "text_secondary": "#a08060",
+    "text_muted": "#5a4a28",
+    "border": "#2a2416",
+    "border_bright": "#3d3420",
+    "highlight_bg": "#2a2008",
+    "btn_bg": "#1e1a12"
+  },
+  "font_cfg": {
+    "family": "Segoe UI",
+    "size": 13,
+    "mono_family": "Consolas",
+    "mono_size": 11
+  }
+}
