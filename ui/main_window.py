@@ -27,6 +27,8 @@ try:
     from ..core.session import SessionManager, SessionState, WindowState
     from ..audio.engine import AudioEngine, SpatialConfig
     from ..audio.metadata import format_duration, read_metadata
+    from ..core.error_logging import append_error_log
+    from ..core.volume import gain_to_slider_value, slider_to_gain
 except (ImportError, ModuleNotFoundError):
     from ui.settings_panel import SettingsPanel, build_stylesheet, DEFAULT_SHORTCUTS, DEFAULT_COLORS, DEFAULT_FONT
     from ui.video_window import VideoWindow
@@ -40,7 +42,8 @@ except (ImportError, ModuleNotFoundError):
     from core.session import SessionManager, SessionState, WindowState
     from audio.engine import AudioEngine, SpatialConfig
     from audio.metadata import format_duration, read_metadata
-
+    from core.error_logging import append_error_log
+    from core.volume import gain_to_slider_value, slider_to_gain
 
 
 class DetachableTabBar(QTabBar):
@@ -115,6 +118,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.playlist = Playlist()
         self.engine = AudioEngine()
+        self._current_track = None
+        self._current_media_path = None
+        self._is_handling_error = False
         self.engine.on_position_changed = self._on_position_changed
         self.engine.on_track_ended = self._on_track_ended
         self.engine.on_error = self._on_engine_error
@@ -254,7 +260,12 @@ class MainWindow(QMainWindow):
         self._restore_window_geometry(state.window)
 
         # ── Volume ───────────────────────────────────────────────────
-        self.sld_volume.setValue(state.volume)
+        saved_value = state.volume
+        if saved_value > 150:
+            slider_value = gain_to_slider_value(max(0.0, min(1.0, saved_value / 100.0)))
+        else:
+            slider_value = saved_value
+        self.sld_volume.setValue(slider_value)
 
         # ── Config spatiale ──────────────────────────────────────────
         if state.spatial_config:
@@ -524,8 +535,8 @@ class MainWindow(QMainWindow):
         vol_col.addWidget(lbl_vol)
 
         self.sld_volume = QSlider(Qt.Orientation.Vertical)
-        self.sld_volume.setRange(0, 150)
-        self.sld_volume.setValue(100)
+        self.sld_volume.setRange(50, 100)
+        self.sld_volume.setValue(gain_to_slider_value(1.0))
         self.sld_volume.setFixedHeight(70)
         self.sld_volume.setToolTip("Volume principal")
         self.sld_volume.valueChanged.connect(self._on_volume_changed)
@@ -773,7 +784,17 @@ class MainWindow(QMainWindow):
                                   Qt.ConnectionType.QueuedConnection)
 
     def _on_engine_error(self, msg: str):
-        self.status_bar.showMessage(f"Erreur audio : {msg}")
+        if self._is_handling_error:
+            return
+        self._is_handling_error = True
+        try:
+            track = self._current_track
+            path = getattr(track, 'path', None) if track else self._current_media_path
+            append_error_log(msg, path, context={"kind": "video" if self._media_mode == 'video' else "audio"})
+            self.status_bar.showMessage(f"Erreur lecture : {msg}")
+            self._advance_to_next()
+        finally:
+            self._is_handling_error = False
 
     @pyqtSlot()
     @pyqtSlot()
@@ -790,6 +811,13 @@ class MainWindow(QMainWindow):
             self._media_mode = 'audio'
             self.btn_play.setIcon(QIcon(self._icon_path('play.svg')))
             self.status_bar.showMessage('Fin de liste')
+
+    def _handle_track_error(self, track, error_message: str):
+        self._current_track = track
+        path = getattr(track, 'path', None) if track else self._current_media_path
+        append_error_log(error_message, path, context={"kind": "audio" if not self._is_video(path or '') else "video"})
+        self.status_bar.showMessage(f"Erreur lecture : {error_message}")
+        self._advance_to_next()
     # ══════════════════════════════════════════════════════════════════
     # Contrôles de transport
     # ══════════════════════════════════════════════════════════════════
@@ -859,6 +887,8 @@ class MainWindow(QMainWindow):
         return any(path.lower().endswith(ext) for ext in SUPPORTED_VIDEO_FORMATS)
 
     def _load_and_play(self, track, index: int):
+        self._current_track = track
+        self._current_media_path = track.path
         self.status_bar.showMessage(f"Chargement : {track.title}...")
         if self._is_video(track.path):
             # Arrêter l'audio si actif
@@ -883,12 +913,14 @@ class MainWindow(QMainWindow):
             self.lbl_dur.setText(format_duration(dur))
             self.status_bar.showMessage(f"Lecture : {track.title}")
             self._schedule_save()
-        # Si ok est False, engine.load() a deja appele on_error avec le detail
-        # de la cause reelle (cf. _on_engine_error) — pas besoin de l'ecraser ici.
+        else:
+            self._on_engine_error("Impossible de charger ou lire le fichier audio")
 
     def _load_and_play_video(self, path: str):
         """Lance la lecture vidéo et bascule sur l'onglet vidéo."""
         self._media_mode = 'video'
+        self._current_track = None
+        self._current_media_path = path
         ok = self.video_engine.load(path)
         if ok:
             # Attacher le renderer (la surface doit être visible)
@@ -901,7 +933,7 @@ class MainWindow(QMainWindow):
                     break
             self.status_bar.showMessage(f"Vidéo : {os.path.basename(path)}")
         else:
-            self.status_bar.showMessage(f"Impossible de lire la vidéo : {path}")
+            self._on_engine_error(f"Impossible de lire la vidéo : {path}")
 
     def _update_track_display(self, track):
         title = track.title or os.path.basename(track.path)
@@ -914,9 +946,10 @@ class MainWindow(QMainWindow):
     # Volume & Seek
     # ══════════════════════════════════════════════════════════════════
     def _on_volume_changed(self, value: int):
-        vol = value / 100.0
+        vol = slider_to_gain(value)
         self.engine.set_volume(vol)
-        self.lbl_vol_val.setText(f"{value}%")
+        self.video_engine.set_volume(value)
+        self.lbl_vol_val.setText(f"{int(round(vol * 100))}%")
         self._schedule_save()
 
     def _on_seek_start(self):
@@ -1092,7 +1125,7 @@ class MainWindow(QMainWindow):
                 self.video_engine.set_speed(1.0)
                 self.video_window.controls.set_speed(1.0)
         elif combo == sc.get('volume_up', 'Up'):
-            self.sld_volume.setValue(min(150, self.sld_volume.value() + 5))
+            self.sld_volume.setValue(min(100, self.sld_volume.value() + 5))
         elif combo == sc.get('volume_down', 'Down'):
             self.sld_volume.setValue(max(0, self.sld_volume.value() - 5))
         elif combo == sc.get('seek_fwd_5', 'Ctrl+Right'):

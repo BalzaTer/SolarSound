@@ -23,6 +23,11 @@ from PyQt6.QtMultimedia import (
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject, QTimer
 
+try:
+    from ..core.volume import slider_to_gain
+except ImportError:
+    from core.volume import slider_to_gain
+
 
 SUPPORTED_VIDEO_FORMATS = (
     ".mp4", ".mkv", ".avi", ".mov", ".wmv",
@@ -136,17 +141,11 @@ class VideoEngine(QObject):
                             self._audio_output.setVolume(0.0)
                         else:
                             # Fallback : audio Qt direct
-                            self._audio_output.setVolume(
-                                min(2.0, self.config.volume / 100.0)
-                            )
+                            self._audio_output.setVolume(self._volume_to_qt_gain())
                     except Exception:
-                        self._audio_output.setVolume(
-                            min(2.0, self.config.volume / 100.0)
-                        )
+                        self._audio_output.setVolume(self._volume_to_qt_gain())
                 else:
-                    self._audio_output.setVolume(
-                        min(2.0, self.config.volume / 100.0)
-                    )
+                    self._audio_output.setVolume(self._volume_to_qt_gain())
             return True
         except Exception as e:
             if self.on_error:
@@ -189,7 +188,7 @@ class VideoEngine(QObject):
             except Exception:
                 pass
         # Restaurer volume Qt
-        self._audio_output.setVolume(min(2.0, self.config.volume / 100.0))
+        self._audio_output.setVolume(self._volume_to_qt_gain())
 
     def seek(self, seconds: float):
         ms = int(seconds * 1000)
@@ -245,15 +244,18 @@ class VideoEngine(QObject):
             except Exception:
                 pass
 
-    def set_volume(self, vol: int):
-        self.config.volume = max(0, min(200, vol))
+    def set_volume(self, vol: int | float):
+        self.config.volume = max(0, min(100, int(vol)))
         if self._audio_output.volume() > 0:
             # Audio Qt direct
-            self._audio_output.setVolume(min(2.0, self.config.volume / 100.0))
+            self._audio_output.setVolume(self._volume_to_qt_gain())
         else:
             # Audio via pipeline SolarSound
             if self._audio_engine:
-                self._audio_engine.set_volume(self.config.volume / 100.0)
+                self._audio_engine.set_volume(slider_to_gain(self.config.volume))
+
+    def _volume_to_qt_gain(self) -> float:
+        return min(2.0, slider_to_gain(self.config.volume))
 
     def _apply_config(self):
         self._player.setPlaybackRate(self.config.speed)
