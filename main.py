@@ -6,6 +6,8 @@ import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
+from core.qt_config import configure_qt_environment
+
 package_dir = os.path.dirname(os.path.abspath(__file__))
 if package_dir not in sys.path:
     sys.path.insert(0, package_dir)
@@ -17,6 +19,7 @@ except (ImportError, ModuleNotFoundError):
 
 
 def main():
+    configure_qt_environment()
     app = QApplication(sys.argv)
     app.setApplicationName("SolarSound")
     app.setOrganizationName("SolarSound")
