@@ -168,20 +168,26 @@ class AudioEngine:
         Decodeur universel : soundfile d'abord, puis fallback stdlib wave.
         Formats : WAV, MP3, FLAC, OGG, OPUS, AIFF, AU et plus.
         """
-        if SOUNDFILE_OK:
+        last_error: Optional[Exception] = None
+
+        if not SOUNDFILE_OK:
+            last_error = RuntimeError("module soundfile indisponible (import a echoue au demarrage)")
+        else:
             try:
                 return self._decode_soundfile(filepath)
-            except Exception:
-                pass
+            except Exception as e:
+                last_error = e
+
         if filepath.lower().endswith('.wav'):
             try:
                 return self._decode_wav_stdlib(filepath)
-            except Exception:
-                pass
+            except Exception as e:
+                last_error = e
+
         raise RuntimeError(
-            f"Format non supporte : {filepath}\n"
-            "Formats supportes : WAV MP3 FLAC OGG OPUS AIFF\n"
-            "Installez soundfile : pip install soundfile"
+            f"Format non supporte ou fichier illisible : {filepath}\n"
+            f"Formats supportes : WAV MP3 FLAC OGG OPUS AIFF\n"
+            f"Cause : {last_error}"
         )
 
     def _decode_soundfile(self, filepath: str):

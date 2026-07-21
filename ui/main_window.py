@@ -883,8 +883,8 @@ class MainWindow(QMainWindow):
             self.lbl_dur.setText(format_duration(dur))
             self.status_bar.showMessage(f"Lecture : {track.title}")
             self._schedule_save()
-        else:
-            self.status_bar.showMessage(f"Impossible de lire : {track.path}")
+        # Si ok est False, engine.load() a deja appele on_error avec le detail
+        # de la cause reelle (cf. _on_engine_error) — pas besoin de l'ecraser ici.
 
     def _load_and_play_video(self, path: str):
         """Lance la lecture vidéo et bascule sur l'onglet vidéo."""

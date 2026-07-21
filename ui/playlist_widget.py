@@ -114,7 +114,7 @@ class PlaylistWidget(QWidget):
             for root, _, files in os.walk(folder):
                 for f in sorted(files):
                     ext = f.lower()
-                if any(ext.endswith(e) for e in (".mp3",".wav",".mp4",".mkv",".avi",".mov",".wmv",".m4v",".flv",".webm",".ts",".mpeg")):
+                    if any(ext.endswith(e) for e in (".mp3",".wav",".mp4",".mkv",".avi",".mov",".wmv",".m4v",".flv",".webm",".ts",".mpeg")):
                         paths.append(os.path.join(root, f))
             if paths:
                 self._add_files(paths)
