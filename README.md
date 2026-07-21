@@ -78,8 +78,3 @@ Pour l'instant pas de version installable en .exe ou .msi de l'application, mais
 | Quitter | Ctrl+Q |
 
 Tous les raccourcis sont reconfigurables dans **⚙ Paramètres → Raccourcis**.
-
-## Associations de fichiers Windows
-
-Lancer `register_associations.ps1` en admin pour associer :
-`.mp3`, `.wav`, `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.playlist`
