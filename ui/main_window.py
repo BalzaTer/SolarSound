@@ -23,6 +23,7 @@ try:
     from .spatial_panel import SpatialPanel
     from .rotation_panel import RotationPanel
     from .vinyl_panel import VinylPanel
+    from .visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
     from ..audio.engine import AudioEngine, SpatialConfig
@@ -38,6 +39,7 @@ except (ImportError, ModuleNotFoundError):
     from ui.spatial_panel import SpatialPanel
     from ui.rotation_panel import RotationPanel
     from ui.vinyl_panel import VinylPanel
+    from ui.visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
     from audio.engine import AudioEngine, SpatialConfig
@@ -249,6 +251,7 @@ class MainWindow(QMainWindow):
             spatial_config=spatial,
         )
         state.vinyl_config = vinyl_cfg
+        state.visualizer_enabled = self.visualizer.is_animation_enabled()
         state.shortcuts = self._shortcuts
         state.colors    = self._colors
         state.font_cfg  = self._font_cfg
@@ -295,6 +298,11 @@ class MainWindow(QMainWindow):
                 idx = min(state.current_index, len(self.playlist.tracks) - 1)
                 self.playlist.set_current(idx)
                 self.playlist_widget.set_active_row(idx)
+
+        # ── Animation du visualiseur ────────────────────────────────
+        enabled = getattr(state, "visualizer_enabled", True)
+        self.visualizer.set_enabled_animation(enabled, emit=False)
+        self.act_visualizer.setChecked(enabled)
 
         # ── Mode de lecture ──────────────────────────────────────────
         try:
@@ -522,6 +530,11 @@ class MainWindow(QMainWindow):
         info_col.addStretch()
         layout.addLayout(info_col, stretch=1)
 
+        self.visualizer = SolarVisualizer(
+            levels_provider=lambda: self.engine.get_visual_levels(VIZ_N_BANDS)
+        )
+        layout.addWidget(self.visualizer, stretch=2, alignment=Qt.AlignmentFlag.AlignVCenter)
+
         vol_col = QVBoxLayout()
         vol_col.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         vol_col.setSpacing(4)
@@ -740,6 +753,17 @@ class MainWindow(QMainWindow):
         act_prev.setShortcut(Qt.Key.Key_Left)
         act_prev.triggered.connect(self._on_prev)
         play_menu.addAction(act_prev)
+
+        view_menu = mb.addMenu("&Affichage")
+        self.act_visualizer = QAction("&Animation solaire", self)
+        self.act_visualizer.setCheckable(True)
+        self.act_visualizer.setChecked(True)
+        self.act_visualizer.setToolTip(
+            "Désactiver pour économiser des ressources (raccourci : clic droit sur l'animation)"
+        )
+        self.act_visualizer.toggled.connect(self._on_visualizer_toggled)
+        self.visualizer.toggled.connect(self.act_visualizer.setChecked)
+        view_menu.addAction(self.act_visualizer)
 
         about_menu = mb.addMenu("&À propos")
         act_about = QAction("À &propos de SolarSound", self)
@@ -1071,6 +1095,11 @@ class MainWindow(QMainWindow):
             active.append("LFE")
         mode = " + ".join(active) if active else "STÉRÉO"
         self.lbl_mode_indicator.setText(f"⬤ {mode.upper()}")
+        self._schedule_save()
+
+    def _on_visualizer_toggled(self, checked: bool):
+        if self.visualizer.is_animation_enabled() != checked:
+            self.visualizer.set_enabled_animation(checked, emit=False)
         self._schedule_save()
 
     def _on_vinyl_config_changed(self, config):

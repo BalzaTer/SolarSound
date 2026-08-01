@@ -140,6 +140,10 @@ class AudioEngine:
         self._sim_thread: Optional[threading.Thread] = None
         self._sim_running = False
 
+        # ── Visualiseur audio ──────────────────────────────────────
+        # Pic glissant utilisé pour l'auto-gain de l'animation (thread UI uniquement)
+        self._viz_peak: float = 1e-3
+
     # ── Chargement ────────────────────────────────────────────────────
     def load(self, filepath: str) -> bool:
         """Charge un fichier audio (MP3 ou WAV) en mémoire"""
@@ -488,6 +492,72 @@ class AudioEngine:
                 break
             time.sleep(CHUNK / self._sample_rate)
         self._sim_running = False
+
+    # ── Visualiseur audio ────────────────────────────────────────────
+    def get_visual_levels(self, n_bands: int = 28) -> np.ndarray:
+        """
+        Calcule n_bands niveaux (0.0 → 1.0) pour l'animation du visualiseur,
+        à partir d'une FFT sur une fenêtre de données autour de la position
+        de lecture courante. Conçu pour être appelé à ~30 fps depuis le
+        thread UI (Qt).
+        """
+        with self._lock:
+            if self.state != self.STATE_PLAYING or self._audio_data is None:
+                return np.zeros(n_bands, dtype=np.float32)
+            pos = self._position
+            data = self._audio_data
+            sr = self._sample_rate
+            total = self._total_frames
+
+        # Fenêtre plus large que la taille de bloc de lecture : nécessaire
+        # pour obtenir une résolution fréquentielle correcte dans les
+        # basses (résolution FFT = sr / window_size).
+        window_size = 4096
+        start = max(0, min(pos, max(0, total - window_size)))
+        end = min(total, start + window_size)
+        if end - start < 256:
+            return np.zeros(n_bands, dtype=np.float32)
+
+        chunk = data[start:end]
+        mono = (chunk[:, 0] + chunk[:, 1]) * 0.5
+        if len(mono) < window_size:
+            mono = np.pad(mono, (0, window_size - len(mono)))
+
+        windowed = mono * np.hanning(len(mono))
+        spectrum = np.abs(np.fft.rfft(windowed))
+        freqs = np.fft.rfftfreq(len(windowed), d=1.0 / sr)
+
+        f_min, f_max = 40.0, min(16000.0, sr / 2.0)
+        edges = np.geomspace(f_min, f_max, n_bands + 1)
+        # Fréquence centrale (moyenne géométrique) de chaque bande.
+        centers = np.sqrt(edges[:-1] * edges[1:])
+
+        # Échantillonnage par interpolation plutôt que moyenne-par-bande :
+        # avec beaucoup de bandes en graves, une bande peut être plus
+        # étroite que la résolution FFT et ne contenir aucun bin (→ zéro).
+        # L'interpolation garantit une valeur continue et non nulle pour
+        # chaque bande, y compris dans le grave, sans « trous ».
+        raw = np.interp(centers, freqs, spectrum).astype(np.float32)
+
+        # Auto-gain : pic glissant (montée immédiate, décroissance rapide pour
+        # que l'animation s'adapte vite aux changements de niveau du morceau)
+        cur_max = float(np.max(raw)) if raw.size else 0.0
+        if cur_max > self._viz_peak:
+            self._viz_peak = cur_max
+        else:
+            self._viz_peak = self._viz_peak * 0.94 + cur_max * 0.06
+        peak = max(self._viz_peak, 1e-3)
+
+        # Courbe punchy (racine plutôt que puissance) pour que les niveaux
+        # moyens/faibles restent bien visibles, pas seulement les pics.
+        levels = np.clip(raw / peak, 0.0, 1.0) ** 0.45
+
+        # Intensité couplée au gain de lecture (volume principal) : plus le
+        # volume est monté, plus l'animation est ample.
+        vol_factor = float(np.clip(self.config.master_volume, 0.4, 1.6))
+        sensitivity = 1.9
+        levels = np.clip(levels * sensitivity * vol_factor, 0.0, 1.0)
+        return levels.astype(np.float32)
 
     def set_volume(self, vol: float):
         self.config.master_volume = max(0.0, min(2.0, vol))

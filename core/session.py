@@ -57,6 +57,7 @@ class SessionState:
     shortcuts: dict = None
     colors: dict = None
     font_cfg: dict = None
+    visualizer_enabled: bool = True
 
     def __post_init__(self):
         if self.window is None:
