@@ -3,10 +3,15 @@
 
 import sys
 import os
-from PyQt6.QtWidgets import QApplication
+import traceback
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
 
 from core.qt_config import configure_qt_environment
+try:
+    from .core.error_logging import append_error_log
+except (ImportError, ModuleNotFoundError):
+    from core.error_logging import append_error_log
 
 package_dir = os.path.dirname(os.path.abspath(__file__))
 if package_dir not in sys.path:
@@ -38,7 +43,17 @@ def main():
     window = MainWindow(open_files=open_files)
     window.show()
 
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    except Exception as exc:
+        tb_txt = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        append_error_log(str(exc), "", context={
+            "kind": "uncaught_exception",
+            "traceback": tb_txt,
+        })
+        QMessageBox.critical(None, "SolarSound - Erreur",
+            "Une erreur inattendue est survenue. Le log a été enregistré dans playback_errors.log.")
+        raise
 
 
 if __name__ == "__main__":

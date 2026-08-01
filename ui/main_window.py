@@ -261,10 +261,7 @@ class MainWindow(QMainWindow):
 
         # ── Volume ───────────────────────────────────────────────────
         saved_value = state.volume
-        if saved_value > 150:
-            slider_value = gain_to_slider_value(max(0.0, min(1.0, saved_value / 100.0)))
-        else:
-            slider_value = saved_value
+        slider_value = max(50, min(150, saved_value))
         self.sld_volume.setValue(slider_value)
 
         # ── Config spatiale ──────────────────────────────────────────
@@ -535,7 +532,7 @@ class MainWindow(QMainWindow):
         vol_col.addWidget(lbl_vol)
 
         self.sld_volume = QSlider(Qt.Orientation.Vertical)
-        self.sld_volume.setRange(50, 100)
+        self.sld_volume.setRange(50, 150)
         self.sld_volume.setValue(gain_to_slider_value(1.0))
         self.sld_volume.setFixedHeight(70)
         self.sld_volume.setToolTip("Volume principal")
@@ -1092,8 +1089,13 @@ class MainWindow(QMainWindow):
     # Clavier global
     # ══════════════════════════════════════════════════════════════════
     def keyPressEvent(self, event):
-        from PyQt6.QtGui import QKeySequence
-        combo = QKeySequence(event.modifiers() | event.key()).toString()
+        try:
+            from PyQt6.QtGui import QKeySequence
+            combo = QKeySequence(event.modifiers() | event.key()).toString()
+        except Exception:
+            super().keyPressEvent(event)
+            return
+
         sc = getattr(self, '_shortcut_map', self._shortcuts)
 
         if combo == sc.get('play_pause', 'Space'):
@@ -1125,9 +1127,9 @@ class MainWindow(QMainWindow):
                 self.video_engine.set_speed(1.0)
                 self.video_window.controls.set_speed(1.0)
         elif combo == sc.get('volume_up', 'Up'):
-            self.sld_volume.setValue(min(100, self.sld_volume.value() + 5))
+            self.sld_volume.setValue(min(150, self.sld_volume.value() + 5))
         elif combo == sc.get('volume_down', 'Down'):
-            self.sld_volume.setValue(max(0, self.sld_volume.value() - 5))
+            self.sld_volume.setValue(max(50, self.sld_volume.value() - 5))
         elif combo == sc.get('seek_fwd_5', 'Ctrl+Right'):
             if self._media_mode == 'video':
                 self.video_engine.seek(self.video_engine.position_seconds + 5)

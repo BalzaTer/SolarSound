@@ -18,8 +18,13 @@ class VolumeMappingTests(unittest.TestCase):
     def test_gain_to_slider_value_round_trips(self):
         slider_value = gain_to_slider_value(0.5)
         self.assertGreaterEqual(slider_value, 0)
-        self.assertLessEqual(slider_value, 100)
+        self.assertLessEqual(slider_value, 150)
         self.assertAlmostEqual(slider_to_gain(slider_value), 0.5, delta=0.03)
+
+    def test_boosted_volume_up_to_150_percent(self):
+        gain = slider_to_gain(150)
+        self.assertAlmostEqual(gain, 1.5, places=6)
+        self.assertEqual(gain_to_slider_value(1.5), 150)
 
 
 if __name__ == "__main__":

@@ -323,13 +323,20 @@ class VideoWindow(QWidget):
         self.controls.set_playing(False)
 
     def _on_engine_ended(self):
-        from PyQt6.QtCore import QMetaObject, Qt
-        QMetaObject.invokeMethod(self, "_handle_ended",
-                                  Qt.ConnectionType.QueuedConnection)
+        try:
+            QTimer.singleShot(0, self._handle_ended)
+        except Exception:
+            try:
+                self._handle_ended()
+            except Exception:
+                pass
 
     def _handle_ended(self):
-        self.controls.set_playing(False)
-        self.request_next.emit()
+        try:
+            self.controls.set_playing(False)
+            self.request_next.emit()
+        except Exception:
+            pass
 
     # ── Sous-titres ───────────────────────────────────────────────────
     def _load_subtitle(self):
@@ -398,18 +405,21 @@ class VideoWindow(QWidget):
 
     # ── Clavier ───────────────────────────────────────────────────────
     def keyPressEvent(self, event: QKeyEvent):
-        key = event.key()
-        if key == Qt.Key.Key_F:
-            self._toggle_fullscreen()
-        elif key == Qt.Key.Key_Escape and self._fullscreen:
-            self._toggle_fullscreen()
-        elif key == Qt.Key.Key_Space:
-            self._on_play_pause()
-        elif key == Qt.Key.Key_Period:
-            self.engine.step_forward()
-        elif key == Qt.Key.Key_Comma:
-            self.engine.step_backward()
-        else:
+        try:
+            key = event.key()
+            if key == Qt.Key.Key_F:
+                self._toggle_fullscreen()
+            elif key == Qt.Key.Key_Escape and self._fullscreen:
+                self._toggle_fullscreen()
+            elif key == Qt.Key.Key_Space:
+                self._on_play_pause()
+            elif key == Qt.Key.Key_Period:
+                self.engine.step_forward()
+            elif key == Qt.Key.Key_Comma:
+                self.engine.step_backward()
+            else:
+                super().keyPressEvent(event)
+        except Exception:
             super().keyPressEvent(event)
 
     def closeEvent(self, event):

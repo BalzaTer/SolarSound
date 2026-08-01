@@ -245,7 +245,7 @@ class VideoEngine(QObject):
                 pass
 
     def set_volume(self, vol: int | float):
-        self.config.volume = max(0, min(100, int(vol)))
+        self.config.volume = max(0, min(150, int(vol)))
         if self._audio_output.volume() > 0:
             # Audio Qt direct
             self._audio_output.setVolume(self._volume_to_qt_gain())
@@ -294,15 +294,24 @@ class VideoEngine(QObject):
             except Exception:
                 pass
         if self.on_track_ended:
-            self.on_track_ended()
+            try:
+                self.on_track_ended()
+            except Exception:
+                pass
 
     def _dispatch_error(self, msg: str):
         if self.on_error:
-            self.on_error(msg)
+            try:
+                self.on_error(msg)
+            except Exception:
+                pass
 
     def _dispatch_pos(self, pos: float):
         if self.on_position_changed:
-            self.on_position_changed(pos)
+            try:
+                self.on_position_changed(pos)
+            except Exception:
+                pass
 
     def release(self):
         self.stop()
