@@ -50,6 +50,7 @@ class SessionState:
     # Audio
     volume: int = 100
     spatial_config: dict = None
+    equalizer_config: dict = None
 
     vinyl_config: dict = None
 
@@ -66,6 +67,8 @@ class SessionState:
             self.playlist_tracks = []
         if self.spatial_config is None:
             self.spatial_config = {}
+        if self.equalizer_config is None:
+            self.equalizer_config = {}
         if self.vinyl_config is None:
             self.vinyl_config = {}
         if self.shortcuts is None:
@@ -96,6 +99,7 @@ class SessionManager:
                 "play_mode": state.play_mode,
                 "volume": state.volume,
                 "spatial_config": state.spatial_config,
+                "equalizer_config": state.equalizer_config,
                 "vinyl_config": getattr(state, "vinyl_config", {}),
                 "shortcuts": getattr(state, "shortcuts", {}),
                 "colors": getattr(state, "colors", {}),
@@ -128,6 +132,7 @@ class SessionManager:
             state.play_mode       = data.get("play_mode", "SEQUENTIAL")
             state.volume          = data.get("volume", 100)
             state.spatial_config  = data.get("spatial_config", {})
+            state.equalizer_config = data.get("equalizer_config", {})
             state.vinyl_config    = data.get("vinyl_config", {})
             state.shortcuts       = data.get("shortcuts", {})
             state.colors          = data.get("colors", {})

@@ -23,6 +23,7 @@ try:
     from .spatial_panel import SpatialPanel
     from .rotation_panel import RotationPanel
     from .vinyl_panel import VinylPanel
+    from .equalizer_panel import EqualizerPanel
     from .visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
@@ -52,6 +53,7 @@ except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
     from audio.engine import AudioEngine, SpatialConfig
+    from ui.equalizer_panel import EqualizerPanel
     from audio.cd import parse_cd_uri
     from audio.metadata import format_duration, read_metadata, read_cover_art_data
     from core.error_logging import append_error_log
@@ -270,6 +272,7 @@ class MainWindow(QMainWindow):
             "mix_mono": cfg.mix_mono,
             "invert_stereo": cfg.invert_stereo,
         }
+        equalizer = dict(self.engine.equalizer_config.__dict__)
 
         # Config vinyle
         vinyl_cfg = {}
@@ -291,6 +294,7 @@ class MainWindow(QMainWindow):
             play_mode=self.playlist.play_mode.name,
             volume=self.sld_volume.value(),
             spatial_config=spatial,
+            equalizer_config=equalizer,
         )
         state.vinyl_config = vinyl_cfg
         state.visualizer_enabled = self.visualizer.is_animation_enabled()
@@ -331,6 +335,11 @@ class MainWindow(QMainWindow):
             self.engine.update_lpf()
             self.spatial_panel.apply_config(cfg)
             self.rotation_panel.apply_config(cfg)
+
+        # ── Egaliseur ───────────────────────────────────────────────
+        if state.equalizer_config:
+            self.engine.equalizer_config.__dict__.update(state.equalizer_config)
+            self.equalizer_panel.apply_config(state.equalizer_config)
 
         # ── Playlist ─────────────────────────────────────────────────
         if state.playlist_tracks:
@@ -727,6 +736,11 @@ class MainWindow(QMainWindow):
         self.spatial_panel = SpatialPanel(self.engine.config)
         self.spatial_panel.config_changed.connect(self._on_spatial_config_changed)
         tabs.addTab(self.spatial_panel, "🔊  5.1")
+
+        # ── Egaliseur ────────────────────────────────────────────────
+        self.equalizer_panel = EqualizerPanel(self.engine.equalizer_config.__dict__)
+        self.equalizer_panel.config_changed.connect(self._on_equalizer_config_changed)
+        tabs.addTab(self.equalizer_panel, "〽  Égaliseur")
 
         # ── Rotation ─────────────────────────────────────────────────
         self.rotation_panel = RotationPanel(self.engine.config)
@@ -1167,6 +1181,10 @@ class MainWindow(QMainWindow):
             active.append("LFE")
         mode = " + ".join(active) if active else "STÉRÉO"
         self.lbl_mode_indicator.setText(f"⬤ {mode.upper()}")
+        self._schedule_save()
+
+    def _on_equalizer_config_changed(self, config):
+        self.engine.equalizer_config.__dict__.update(config)
         self._schedule_save()
 
     def _on_visualizer_toggled(self, checked: bool):

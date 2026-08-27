@@ -19,6 +19,30 @@ from typing import Optional, Callable
 import time
 import wave as _wave_mod
 
+
+@dataclass
+class EqualizerConfig:
+    enabled: bool = True
+    frequencies: list = None
+    gains: list = None
+    free_frequencies: list = None
+    free_gains: list = None
+    presets: dict = None
+    current_preset: str = "Plat"
+    mode: str = "bands"
+
+    def __post_init__(self):
+        if self.frequencies is None:
+            self.frequencies = [20, 80, 200, 500, 1250, 3000, 7500, 16000]
+        if self.gains is None:
+            self.gains = [0.0] * len(self.frequencies)
+        if self.free_frequencies is None:
+            self.free_frequencies = list(self.frequencies)
+        if self.free_gains is None:
+            self.free_gains = list(self.gains)
+        if self.presets is None:
+            self.presets = {}
+
 try:
     from .cd import CdAudio, parse_cd_uri
 except ImportError:
@@ -123,6 +147,9 @@ class AudioEngine:
     def __init__(self):
         self.state = self.STATE_STOPPED
         self.config = SpatialConfig()
+        self.equalizer_config = EqualizerConfig()
+        self._eq_states = []
+        self._eq_sample_rate = 0
 
         self._audio_data: Optional[np.ndarray] = None
         self._sample_rate: int = 44100
@@ -476,6 +503,42 @@ class AudioEngine:
         out *= cfg.master_volume
         return np.clip(out, -1.0, 1.0)
 
+    def _equalize(self, stereo_chunk: np.ndarray) -> np.ndarray:
+        """Applique des filtres peak paramétriques avant le mixage 5.1."""
+        cfg = self.equalizer_config
+        if not cfg.enabled or not len(stereo_chunk):
+            return stereo_chunk
+        frequencies = cfg.free_frequencies if getattr(cfg, "mode", "bands") == "free" else cfg.frequencies
+        gains = cfg.free_gains if getattr(cfg, "mode", "bands") == "free" else cfg.gains
+        if self._eq_sample_rate != self._sample_rate or len(self._eq_states) != len(frequencies):
+            self._eq_sample_rate = self._sample_rate
+            self._eq_states = [np.zeros((2, 4), dtype=np.float64) for _ in frequencies]
+        output = stereo_chunk.astype(np.float64, copy=True)
+        for index, (frequency, gain) in enumerate(zip(frequencies, gains)):
+            if abs(gain) < 0.01:
+                continue
+            frequency = max(20.0, min(self._sample_rate * 0.45, float(frequency)))
+            amplitude = 10.0 ** (float(gain) / 40.0)
+            omega = 2.0 * np.pi * frequency / self._sample_rate
+            alpha = np.sin(omega) / (2.0 * 1.0)
+            b0 = 1.0 + alpha * amplitude
+            b1 = -2.0 * np.cos(omega)
+            b2 = 1.0 - alpha * amplitude
+            a0 = 1.0 + alpha / amplitude
+            a1 = -2.0 * np.cos(omega)
+            a2 = 1.0 - alpha / amplitude
+            b0, b1, b2, a1, a2 = b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0
+            state = self._eq_states[index]
+            for channel in range(2):
+                x1, x2, y1, y2 = state[channel]
+                for sample in range(len(output)):
+                    x0 = output[sample, channel]
+                    y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
+                    output[sample, channel] = y0
+                    x2, x1, y2, y1 = x1, x0, y1, y0
+                state[channel] = (x1, x2, y1, y2)
+        return np.clip(output, -1.0, 1.0).astype(np.float32)
+
     # ── Stream sounddevice ────────────────────────────────────────────
     def _start_stream(self):
         self._stop_stream()
@@ -544,6 +607,9 @@ class AudioEngine:
         # Effet vinyle (avant spatialisation)
         if self.vinyl and self.vinyl.config.enabled:
             chunk = self.vinyl.process(chunk)
+
+        # Egalisation de la source avant la spatialisation.
+        chunk = self._equalize(chunk)
 
         # Spatialisation
         spat = self._spatialize(chunk)
