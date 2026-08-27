@@ -14,12 +14,12 @@ Types of import:
 IMPORTANT: Do NOT post this list to the issue-tracker. Use it as a basis for
             tracking down the missing module yourself. Thanks!
 
-missing module named 'collections.abc' - imported by _colorize (top-level), typing (top-level), traceback (top-level), logging (top-level), selectors (top-level), http.client (top-level), importlib.resources.readers (top-level), inspect (top-level), tracemalloc (top-level), numpy._typing._array_like (top-level), numpy._typing._nested_sequence (conditional), typing_extensions (top-level), asyncio.base_events (top-level), multiprocessing.managers (top-level), asyncio.coroutines (top-level), numpy._typing._shape (top-level), numpy._typing._dtype_like (top-level), numpy.lib._function_base_impl (top-level), numpy.lib._npyio_impl (top-level), numpy.random._common (top-level), numpy.random._generator (top-level), numpy.random.bit_generator (top-level), numpy.random.mtrand (top-level), numpy.polynomial._polybase (top-level), _pyrepl.types (top-level), mutagen.apev2 (top-level), mutagen.mp4 (top-level), soundfile (top-level)
-missing module named pwd - imported by posixpath (delayed, conditional, optional), shutil (delayed, optional), tarfile (optional), pathlib (optional), netrc (delayed, optional), subprocess (delayed, conditional, optional), http.server (delayed, optional)
-missing module named grp - imported by shutil (delayed, optional), tarfile (optional), pathlib (optional), subprocess (delayed, conditional, optional)
+missing module named 'collections.abc' - imported by tracemalloc (top-level), traceback (top-level), _colorize (top-level), selectors (top-level), logging (top-level), http.client (top-level), importlib.resources.readers (top-level), inspect (top-level), typing (top-level), numpy._typing._array_like (top-level), numpy._typing._nested_sequence (conditional), typing_extensions (top-level), asyncio.base_events (top-level), multiprocessing.managers (top-level), asyncio.coroutines (top-level), numpy._typing._shape (top-level), numpy._typing._dtype_like (top-level), numpy.lib._function_base_impl (top-level), numpy.lib._npyio_impl (top-level), numpy.polynomial._polybase (top-level), _pyrepl.types (top-level), mutagen.apev2 (top-level), mutagen.mp4 (top-level), soundfile (top-level)
+missing module named pwd - imported by posixpath (delayed, conditional, optional), subprocess (delayed, conditional, optional), shutil (delayed, optional), tarfile (optional), pathlib (optional), netrc (delayed, optional), http.server (delayed, optional)
+missing module named grp - imported by subprocess (delayed, conditional, optional), shutil (delayed, optional), tarfile (optional), pathlib (optional)
 missing module named _scproxy - imported by urllib.request (conditional)
-missing module named fcntl - imported by pathlib._os (optional), subprocess (optional)
-missing module named posix - imported by posixpath (optional), shutil (conditional), importlib._bootstrap_external (conditional), pathlib._os (optional), os (conditional, optional), _pyrepl.trace (conditional)
+missing module named fcntl - imported by subprocess (optional), pathlib._os (optional)
+missing module named posix - imported by os (conditional, optional), posixpath (optional), shutil (conditional), importlib._bootstrap_external (conditional), pathlib._os (optional), _pyrepl.trace (conditional)
 missing module named resource - imported by posix (top-level)
 missing module named _frozen_importlib_external - imported by importlib._bootstrap (delayed), importlib (optional), importlib.abc (optional), zipimport (top-level)
 excluded module named _frozen_importlib - imported by importlib (optional), importlib.abc (optional), zipimport (top-level)
@@ -41,7 +41,7 @@ missing module named psutil - imported by numpy.testing._private.utils (delayed,
 missing module named termios - imported by tty (top-level), _pyrepl.pager (delayed, optional)
 missing module named readline - imported by cmd (delayed, conditional, optional), code (delayed, conditional, optional), pdb (delayed, conditional, optional), rlcompleter (optional)
 missing module named win32pdh - imported by numpy.testing._private.utils (delayed, conditional)
-missing module named _typeshed - imported by numpy.random._common (top-level), numpy.random.bit_generator (top-level)
+excluded module named numpy.random - imported by numpy (delayed, conditional)
 missing module named threadpoolctl - imported by numpy.lib._utils_impl (delayed, optional)
 missing module named numpy._core.zeros - imported by numpy._core (top-level), numpy.linalg._linalg (top-level), numpy (conditional)
 missing module named numpy._core.void - imported by numpy._core (conditional), numpy (conditional)

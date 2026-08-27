@@ -12,9 +12,11 @@ import os
 try:
     from ..core.playlist import Playlist, Track, PlayMode
     from ..audio.metadata import read_metadata, format_duration
+    from ..audio.cd import CdAudio, make_cd_uri
 except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, Track, PlayMode
     from audio.metadata import read_metadata, format_duration
+    from audio.cd import CdAudio, make_cd_uri
 
 
 class PlaylistWidget(QWidget):
@@ -25,6 +27,7 @@ class PlaylistWidget(QWidget):
 
     def __init__(self, playlist: Playlist, parent=None):
         super().__init__(parent)
+        self.setAcceptDrops(True)
         self.playlist = playlist
         self._setup_ui()
         self._connect_signals()
@@ -45,6 +48,10 @@ class PlaylistWidget(QWidget):
         self.btn_add_folder = QPushButton("📁 Dossier")
         self.btn_add_folder.setToolTip("Ajouter un dossier entier")
         toolbar.addWidget(self.btn_add_folder)
+
+        self.btn_add_cd = QPushButton("💿 CD audio")
+        self.btn_add_cd.setToolTip("Ajouter les pistes d'un CD audio")
+        toolbar.addWidget(self.btn_add_cd)
 
         self.btn_remove = QPushButton("✕ Retirer")
         self.btn_remove.setToolTip("Retirer le morceau sélectionné")
@@ -89,6 +96,7 @@ class PlaylistWidget(QWidget):
     def _connect_signals(self):
         self.btn_add.clicked.connect(self._on_add_files)
         self.btn_add_folder.clicked.connect(self._on_add_folder)
+        self.btn_add_cd.clicked.connect(self._on_add_cd)
         self.btn_remove.clicked.connect(self._on_remove)
         self.btn_clear.clicked.connect(self._on_clear)
         self.btn_save_pl.clicked.connect(self._on_save_playlist)
@@ -118,6 +126,91 @@ class PlaylistWidget(QWidget):
                         paths.append(os.path.join(root, f))
             if paths:
                 self._add_files(paths)
+
+    def _on_add_cd(self):
+        drives = CdAudio.drives()
+        if not drives:
+            QMessageBox.information(
+                self, "CD audio", "Aucun lecteur CD détecté."
+            )
+            return
+
+        drive, accepted = QInputDialog.getItem(
+            self, "Ajouter un CD audio", "Lecteur :", drives, 0, False
+        )
+        if not accepted:
+            return
+
+        cd = CdAudio()
+        try:
+            track_count = cd.track_count(drive)
+            if track_count < 1:
+                raise RuntimeError("Le disque ne contient aucune piste audio")
+            tracks = []
+            for number in range(1, track_count + 1):
+                cd.open(drive, number)
+                duration = cd.duration
+                cd.close()
+                track = Track(
+                    path=make_cd_uri(drive, number),
+                    title=f"Piste {number:02d}",
+                    album=f"CD audio ({drive})",
+                    duration=duration,
+                )
+                self.playlist.add_track(track)
+                self._add_list_item(track)
+                tracks.append(track)
+            self._update_count()
+            self.playlist_changed.emit()
+        except Exception as exc:
+            cd.close()
+            QMessageBox.critical(self, "CD audio", f"Impossible de lire le CD :\n{exc}")
+
+    # Gestion du glisser-déposer externe (fichiers et dossiers)
+    def dragEnterEvent(self, event):
+        md: QMimeData = event.mimeData()
+        if md.hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        md: QMimeData = event.mimeData()
+        if not md.hasUrls():
+            return
+        urls = md.urls()
+        paths = []
+        for u in urls:
+            local = u.toLocalFile()
+            if not local:
+                continue
+            if os.path.isdir(local):
+                for root, _, files in os.walk(local):
+                    for f in sorted(files):
+                        ext = f.lower()
+                        if any(ext.endswith(e) for e in Playlist.ALL_FORMATS):
+                            paths.append(os.path.join(root, f))
+            else:
+                paths.append(local)
+
+        if not paths:
+            return
+
+        # Si la liste contient un fichier .playlist, charger la première trouvée
+        playlist_files = [p for p in paths if p.lower().endswith('.playlist')]
+        if playlist_files:
+            try:
+                self.playlist.load(playlist_files[0])
+                self.refresh_from_playlist()
+                self.playlist_changed.emit()
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Impossible de charger la playlist :\n{e}")
+            return
+
+        # Sinon, ajouter les fichiers média valides
+        media_paths = [p for p in paths if os.path.splitext(p)[1].lower() in Playlist.ALL_FORMATS]
+        if media_paths:
+            self._add_files(media_paths)
 
     def _add_files(self, paths: list):
         for path in paths:

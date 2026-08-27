@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QFileDialog, QGroupBox, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal
-from PyQt6.QtGui import QAction, QFont, QIcon, QKeySequence
+from PyQt6.QtGui import QAction, QFont, QIcon, QKeySequence, QPixmap
 
 try:
     from .settings_panel import SettingsPanel, build_stylesheet, DEFAULT_SHORTCUTS, DEFAULT_COLORS, DEFAULT_FONT
@@ -27,10 +27,19 @@ try:
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
     from ..audio.engine import AudioEngine, SpatialConfig
-    from ..audio.metadata import format_duration, read_metadata
+    from ..audio.cd import parse_cd_uri
+    from ..audio.metadata import format_duration, read_metadata, read_cover_art_data
     from ..core.error_logging import append_error_log
     from ..core.volume import gain_to_slider_value, slider_to_gain
 except (ImportError, ModuleNotFoundError):
+    # If this module is run directly (python ui/main_window.py), absolute
+    # imports like "ui.settings_panel" may fail because the package root
+    # is not on sys.path. Ensure the project root is available so the
+    # fallback imports succeed.
+    pkg_root = os.path.dirname(os.path.dirname(__file__))
+    if pkg_root not in sys.path:
+        sys.path.insert(0, pkg_root)
+
     from ui.settings_panel import SettingsPanel, build_stylesheet, DEFAULT_SHORTCUTS, DEFAULT_COLORS, DEFAULT_FONT
     from ui.video_window import VideoWindow
     from video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
@@ -43,7 +52,8 @@ except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
     from audio.engine import AudioEngine, SpatialConfig
-    from audio.metadata import format_duration, read_metadata
+    from audio.cd import parse_cd_uri
+    from audio.metadata import format_duration, read_metadata, read_cover_art_data
     from core.error_logging import append_error_log
     from core.volume import gain_to_slider_value, slider_to_gain
 
@@ -161,6 +171,8 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(STYLESHEET)
 
         self._build_ui()
+        # Autoriser le glisser-déposer sur la fenêtre principale
+        self.setAcceptDrops(True)
         self._build_menu()
         self._build_status_bar()
         self._setup_timer()
@@ -172,6 +184,36 @@ class MainWindow(QMainWindow):
         # Fichiers ouverts via "Lire avec" ou argument CLI
         if open_files:
             self._open_files_from_args(open_files)
+
+    # ── Glisser-déposer global (redirige vers _open_files_from_args) ──
+    def dragEnterEvent(self, event):
+        md = event.mimeData()
+        if md.hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        md = event.mimeData()
+        if not md.hasUrls():
+            return
+        urls = md.urls()
+        paths = []
+        for u in urls:
+            local = u.toLocalFile()
+            if not local:
+                continue
+            if os.path.isdir(local):
+                for root, _, files in os.walk(local):
+                    for f in sorted(files):
+                        ext = f.lower()
+                        if any(ext.endswith(e) for e in self.playlist.ALL_FORMATS):
+                            paths.append(os.path.join(root, f))
+            else:
+                paths.append(local)
+
+        if paths:
+            self._open_files_from_args(paths)
 
     def _icon_path(self, name):
         return os.path.join(self._icons_dir, name)
@@ -292,7 +334,10 @@ class MainWindow(QMainWindow):
 
         # ── Playlist ─────────────────────────────────────────────────
         if state.playlist_tracks:
-            valid_paths = [p for p in state.playlist_tracks if os.path.isfile(p)]
+            valid_paths = [
+                p for p in state.playlist_tracks
+                if os.path.isfile(p) or parse_cd_uri(p)
+            ]
             if valid_paths:
                 self.playlist_widget._add_files(valid_paths)
                 idx = min(state.current_index, len(self.playlist.tracks) - 1)
@@ -500,10 +545,11 @@ class MainWindow(QMainWindow):
         """)
         art_inner = QVBoxLayout(self.art_frame)
         art_inner.setContentsMargins(0, 0, 0, 0)
-        self.art_note = QLabel("♪")
-        self.art_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.art_note.setStyleSheet("font-size: 32px; color: #3d3420; border: none;")
-        art_inner.addWidget(self.art_note)
+        self.art_label = QLabel("♪")
+        self.art_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.art_label.setStyleSheet("font-size: 32px; color: #3d3420; border: none; background: transparent;")
+        self.art_label.setFixedSize(80, 80)
+        art_inner.addWidget(self.art_label)
         layout.addWidget(self.art_frame)
 
         info_col = QVBoxLayout()
@@ -961,7 +1007,33 @@ class MainWindow(QMainWindow):
         self.lbl_title.setText(title)
         self.lbl_artist.setText(track.artist or "Artiste inconnu")
         self.lbl_album.setText(track.album or "")
+        self._set_track_artwork(track)
         self.setWindowTitle(f"{title} — SolarSound")
+
+    def _set_track_artwork(self, track):
+        self.art_label.setText("♪")
+        self.art_label.setStyleSheet("font-size: 32px; color: #3d3420; border: none; background: transparent;")
+        self.art_label.setPixmap(QPixmap())
+
+        if not track or not getattr(track, "path", None):
+            return
+
+        cover_data = read_cover_art_data(track.path)
+        if not cover_data:
+            return
+
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(cover_data):
+            return
+
+        scaled = pixmap.scaled(
+            self.art_frame.size(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.art_label.setPixmap(scaled)
+        self.art_label.setText("")
+        self.art_label.setStyleSheet("border: none; background: transparent;")
 
     # ══════════════════════════════════════════════════════════════════
     # Volume & Seek

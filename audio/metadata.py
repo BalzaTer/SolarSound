@@ -5,7 +5,7 @@ from typing import Optional
 
 try:
     from mutagen.mp3 import MP3
-    from mutagen.id3 import ID3NoHeaderError
+    from mutagen.id3 import ID3NoHeaderError, ID3, APIC
     from mutagen import File as MutagenFile
     MUTAGEN_OK = True
 except ImportError:
@@ -37,6 +37,92 @@ def read_metadata(filepath: str) -> dict:
         _read_mp3(filepath, result)
 
     return result
+
+
+def read_cover_art_data(filepath: str) -> Optional[bytes]:
+    """Retourne les octets d’une pochette, depuis les tags ou un fichier image voisin."""
+    if not filepath or not os.path.exists(filepath):
+        return None
+
+    embedded = _read_embedded_cover_art(filepath)
+    if embedded:
+        return embedded
+
+    return _find_sidecar_cover_art(filepath)
+
+
+def _read_embedded_cover_art(filepath: str) -> Optional[bytes]:
+    if not MUTAGEN_OK:
+        return None
+
+    try:
+        audio = MutagenFile(filepath, easy=False)
+        if audio is None:
+            return None
+
+        tags = getattr(audio, "tags", None)
+        if not tags:
+            return None
+
+        if isinstance(tags, ID3):
+            for frame in tags.getall("APIC"):
+                data = getattr(frame, "data", None)
+                if data:
+                    return bytes(data)
+
+        for key in ("covr", "APIC", "metadata_block_pic"):
+            try:
+                values = tags.getall(key)
+            except Exception:
+                continue
+            for value in values:
+                if hasattr(value, "data") and value.data:
+                    return bytes(value.data)
+                if isinstance(value, (bytes, bytearray)) and value:
+                    return bytes(value)
+    except Exception:
+        return None
+
+    return None
+
+
+def _find_sidecar_cover_art(filepath: str) -> Optional[bytes]:
+    directory = os.path.dirname(filepath) or "."
+    if not os.path.isdir(directory):
+        return None
+
+    base_name = os.path.splitext(os.path.basename(filepath))[0].lower()
+    image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp"}
+    candidates = []
+
+    for entry in os.listdir(directory):
+        full_path = os.path.join(directory, entry)
+        if not os.path.isfile(full_path):
+            continue
+        ext = os.path.splitext(entry)[1].lower()
+        if ext not in image_exts:
+            continue
+        lowered = entry.lower()
+        if any(token in lowered for token in ("cover", "folder", "front", "album", "art")) or base_name in lowered:
+            candidates.append(full_path)
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda p: (
+        not any(token in os.path.basename(p).lower() for token in ("cover", "folder", "front", "album", "art")),
+        os.path.basename(p).lower(),
+    ))
+
+    for candidate in candidates:
+        try:
+            with open(candidate, "rb") as handle:
+                data = handle.read()
+            if data:
+                return data
+        except Exception:
+            continue
+    return None
 
 
 def _read_mp3(filepath: str, result: dict):

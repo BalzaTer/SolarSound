@@ -36,12 +36,21 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         'tests',
+        'numpy.random',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
     noarchive=False,
 )
+
+# Les traductions Qt ne sont pas utilisées par SolarSound et ajoutent plusieurs
+# Mo de fichiers à extraire dans le mode onefile.
+a.datas = [
+    entry for entry in a.datas
+    if 'translations' not in entry[0].replace('\\', '/')
+    and not entry[0].replace('\\', '/').startswith('numpy-')
+]
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
@@ -51,12 +60,13 @@ exe = EXE(
     a.binaries,
     a.zipfiles,
     a.datas,
-    [],
     name='SolarSound',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,          # UPX corrompt certaines DLL Qt6 -> erreur "failed to allocate
+                        # temporary input buffer" au lancement du .exe (bug connu
+                        # PyInstaller + UPX + PyQt6). On désactive complètement UPX.
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,          # pas de fenêtre console (appli graphique)

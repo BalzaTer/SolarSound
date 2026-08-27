@@ -41,7 +41,7 @@ if exist "dist" rmdir /s /q "dist"
 REM --- Compilation ---
 echo.
 echo [INFO] Compilation de SolarSound.exe ...
-pyinstaller solarsound.spec --noconfirm --distpath dist --workpath build_pyinstaller
+python -m PyInstaller solarsound.spec --noconfirm --distpath dist --workpath build_pyinstaller
 
 if errorlevel 1 (
     echo.

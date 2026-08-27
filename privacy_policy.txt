@@ -1,0 +1,47 @@
+Politique de confidentialité – SolarSound
+Version 1.1 – 01/08/2026
+
+Application : SolarSound
+Éditeur : H.C. Studio
+Pays : France
+Distribution : Microsoft Store
+
+1. Introduction
+Cette politique de confidentialité explique le traitement des informations liées à l’utilisation de l’application SolarSound.
+
+2. Données collectées
+SolarSound est une application gratuite et, dans sa version actuelle, ne collecte pas de données personnelles à des fins de profilage, publicitaires ou commerciales.
+L’application ne demande pas de compte utilisateur et ne nécessite pas la collecte de données telles que :
+- nom,
+- adresse e-mail,
+- numéro de téléphone,
+- adresse postale,
+- données de localisation,
+- historique d’utilisation,
+- photos, fichiers personnels ou contenu multimédia.
+
+3. Utilisation des données
+Les données que vous pourriez fournir volontairement via des commentaires, suggestions ou retours d’expérience (par exemple sur Microsoft Store, GitHub ou d’autres canaux publics) sont traitées uniquement dans le cadre de la communication liée à l’application. SolarSound n’utilise pas ces informations à des fins de vente, de ciblage publicitaire ou de commercialisation.
+
+4. Partage avec des tiers
+SolarSound n’envoie pas vos données personnelles à des serveurs tiers dans le cadre de son fonctionnement normal.
+Si vous choisissez d’utiliser des plateformes externes telles que GitHub ou Microsoft Store pour laisser un commentaire ou une suggestion, les informations fournies seront soumises aux politiques de ces plateformes, auxquelles SolarSound n’a pas de contrôle direct.
+
+5. Cookies, suivi et analyse
+L’application n’utilise pas de cookies, de systèmes de suivi publicitaire, de pixels, ni de solutions d’analyse comportementale.
+
+6. Sécurité
+Nous mettons en place des mesures raisonnables pour protéger les informations que vous transmettez volontairement. Cependant, aucune méthode de transmission ou de stockage numérique n’est totalement exempte de risque.
+
+7. Droits des utilisateurs
+Dans la mesure où l’application ne collecte pas de données personnelles directement, il n’existe pas de traitement de données personnelles à gérer au titre de cette application.
+Si vous fournissez des informations via un service tiers, vous devez consulter la politique de confidentialité de ce service.
+
+8. Modifications de cette politique
+Cette politique de confidentialité peut être mise à jour à tout moment. Toute modification sera publiée sous la même forme et restera applicable à compter de sa publication.
+
+9. Contact
+Pour toute question concernant cette politique, vous pouvez contacter l’éditeur via les commentaires de l’application, le dépôt GitHub ou les canaux de communication mis à disposition pour SolarSound.
+
+10. Consentement
+En utilisant SolarSound, vous reconnaissez avoir pris connaissance de cette politique de confidentialité et acceptez ses termes.

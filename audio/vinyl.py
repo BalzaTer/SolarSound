@@ -21,6 +21,7 @@ dans le callback audio (thread-safe, pas d'allocation dynamique).
 """
 
 from dataclasses import dataclass, field
+import random
 import numpy as np
 import threading
 
@@ -85,7 +86,7 @@ class VinylProcessor:
         self._crackle_decay = 0.0       # taux de décroissance par frame
         self._crackle_sign = 1.0        # polarité du clic (+1 ou -1)
         # RNG déterministe mais indépendant du reste
-        self._rng = np.random.default_rng()
+        self._rng = random.Random()
         self._next_crackle_countdown()
 
     def set_sample_rate(self, sr: int):
@@ -192,7 +193,11 @@ class VinylProcessor:
 
         # Bruit de fond (hiss) : bruit blanc filtré passe-bas à ~8 kHz
         if cfg.hiss_level > 0:
-            hiss = self._rng.standard_normal(n).astype(np.float32) * cfg.hiss_level
+            hiss = np.fromiter(
+                (self._rng.gauss(0.0, 1.0) for _ in range(n)),
+                dtype=np.float32,
+                count=n,
+            ) * cfg.hiss_level
             # Filtrage simple : moyenne mobile 3 points (adoucit le bruit)
             hiss[1:-1] = (hiss[:-2] + hiss[1:-1] + hiss[2:]) / 3.0
             out[:, 0] += hiss

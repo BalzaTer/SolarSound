@@ -20,6 +20,11 @@ import time
 import wave as _wave_mod
 
 try:
+    from .cd import CdAudio, parse_cd_uri
+except ImportError:
+    from audio.cd import CdAudio, parse_cd_uri
+
+try:
     import sounddevice as sd
     SOUNDDEVICE_OK = True
 except Exception:
@@ -139,16 +144,43 @@ class AudioEngine:
         self._rotation_angle: float = 0.0   # angle courant en radians
         self._sim_thread: Optional[threading.Thread] = None
         self._sim_running = False
+        self._cd: Optional[CdAudio] = None
+        self._cd_stream = None
+        self._cd_queue = None
+        self._cd_buffer = np.empty((0, 2), dtype=np.float32)
+        self._cd_producer = None
+        self._cd_eof = False
+        self._cd_cancel = threading.Event()
+        self._cd_thread: Optional[threading.Thread] = None
 
         # ── Visualiseur audio ──────────────────────────────────────
         # Pic glissant utilisé pour l'auto-gain de l'animation (thread UI uniquement)
         self._viz_peak: float = 1e-3
+        self._viz_audio_data = np.empty((0, 2), dtype=np.float32)
 
     # ── Chargement ────────────────────────────────────────────────────
     def load(self, filepath: str) -> bool:
         """Charge un fichier audio (MP3 ou WAV) en mémoire"""
         self.stop()
         try:
+            cd_location = parse_cd_uri(filepath)
+            if cd_location:
+                from .cd import CdStream
+                self._cd_stream = CdStream(*cd_location)
+                self._cd_stream.open()
+                self._audio_data = np.empty((0, 2), dtype=np.float32)
+                self._sample_rate = 44100
+                self._position = 0
+                self._total_frames = self._cd_stream.sectors * 588
+                self._lpf.set(self.config.lfe_low_pass_hz, self._sample_rate)
+                self._cd_queue = queue.Queue(maxsize=4)
+                self._cd_buffer = np.empty((0, 2), dtype=np.float32)
+                self._viz_audio_data = np.empty((0, 2), dtype=np.float32)
+                self._cd_eof = False
+                self._cd_cancel.clear()
+                self._cd_producer = threading.Thread(target=self._prefetch_cd, daemon=True)
+                self._cd_producer.start()
+                return True
             data, sr = self._decode_file(filepath)
             if data is None:
                 return False
@@ -157,6 +189,7 @@ class AudioEngine:
                 self._sample_rate = sr
                 self._position = 0
                 self._total_frames = len(self._audio_data)
+                self._viz_audio_data = np.empty((0, 2), dtype=np.float32)
                 self._lpf.set(self.config.lfe_low_pass_hz, sr)
                 if self.vinyl:
                     self.vinyl.set_sample_rate(sr)
@@ -232,7 +265,14 @@ class AudioEngine:
 
     # ── Lecture / Contrôle ────────────────────────────────────────────
     def play(self):
-        if self._audio_data is None:
+        if self._audio_data is None and self._cd_stream is None:
+            return
+        if self._cd_stream:
+            self.state = self.STATE_PLAYING
+            if not self._simulation_mode:
+                self._start_stream()
+            else:
+                self._start_simulation()
             return
         if self.state == self.STATE_PAUSED:
             self.state = self.STATE_PLAYING
@@ -253,15 +293,50 @@ class AudioEngine:
     def pause(self):
         if self.state == self.STATE_PLAYING:
             self.state = self.STATE_PAUSED
+            if self._cd:
+                self._cd.pause()
+                return
             self._stop_stream()
 
     def stop(self):
         self.state = self.STATE_STOPPED
+        if self._cd_stream:
+            self._cd_cancel.set()
+            if self._cd_producer and self._cd_producer.is_alive():
+                self._cd_producer.join(timeout=0.5)
+            self._cd_stream.close()
+            self._cd_stream = None
+            self._cd_queue = None
+            self._cd_buffer = np.empty((0, 2), dtype=np.float32)
+        if self._cd:
+            self._cd.stop()
+            self._cd.close()
+            self._cd = None
         self._stop_stream()
         with self._lock:
             self._position = 0
 
     def seek(self, seconds: float):
+        if self._cd_stream:
+            seconds = max(0.0, min(seconds, self.duration_seconds))
+            self._cd_cancel.set()
+            if self._cd_producer and self._cd_producer.is_alive():
+                self._cd_producer.join(timeout=0.5)
+            self._cd_stream.seek(seconds)
+            self._position = int(seconds * self._sample_rate)
+            self._cd_queue = queue.Queue(maxsize=4)
+            self._cd_buffer = np.empty((0, 2), dtype=np.float32)
+            self._viz_audio_data = np.empty((0, 2), dtype=np.float32)
+            self._cd_eof = False
+            self._cd_cancel.clear()
+            self._cd_producer = threading.Thread(target=self._prefetch_cd, daemon=True)
+            self._cd_producer.start()
+            if self.vinyl:
+                self.vinyl.reset_position()
+            return
+        if self._cd:
+            self._cd.seek(seconds)
+            return
         with self._lock:
             self._position = max(0, min(int(seconds * self._sample_rate),
                                         self._total_frames - 1))
@@ -270,11 +345,30 @@ class AudioEngine:
 
     @property
     def position_seconds(self) -> float:
+        if self._cd:
+            return self._cd.position_seconds
         return self._position / max(1, self._sample_rate)
 
     @property
     def duration_seconds(self) -> float:
+        if self._cd:
+            return self._cd.duration
         return self._total_frames / max(1, self._sample_rate)
+
+    def _start_cd_monitor(self):
+        if self._cd_thread and self._cd_thread.is_alive():
+            return
+        self._cd_thread = threading.Thread(target=self._monitor_cd, daemon=True)
+        self._cd_thread.start()
+
+    def _monitor_cd(self):
+        while self.state == self.STATE_PLAYING and self._cd:
+            if self._cd.position_seconds >= self._cd.duration - 0.25:
+                self.state = self.STATE_STOPPED
+                if self.on_track_ended:
+                    self.on_track_ended()
+                return
+            time.sleep(0.2)
 
     # ── Spatialisation ────────────────────────────────────────────────
     def _spatialize(self, stereo_chunk: np.ndarray) -> np.ndarray:
@@ -416,18 +510,36 @@ class AudioEngine:
 
     def _audio_callback(self, outdata, frames, time_info, status):
         with self._lock:
-            if self.state != self.STATE_PLAYING or self._audio_data is None:
+            if self.state != self.STATE_PLAYING or (self._audio_data is None and self._cd_stream is None):
                 outdata[:] = 0
                 return
 
-            remaining = self._total_frames - self._position
-            if remaining <= 0:
-                outdata[:] = 0
-                raise sd.CallbackStop()
+            if self._cd_stream is not None:
+                while len(self._cd_buffer) < frames and self._cd_queue is not None:
+                    try:
+                        self._cd_buffer = np.concatenate((self._cd_buffer, self._cd_queue.get_nowait()))
+                    except queue.Empty:
+                        break
+                if not len(self._cd_buffer):
+                    outdata[:] = 0
+                    if self._cd_eof:
+                        raise sd.CallbackStop()
+                    return
+                n = min(frames, len(self._cd_buffer))
+                chunk = self._cd_buffer[:n]
+                self._cd_buffer = self._cd_buffer[n:]
+                self._position += n
+            else:
+                remaining = self._total_frames - self._position
+                if remaining <= 0:
+                    outdata[:] = 0
+                    raise sd.CallbackStop()
+                n = min(frames, remaining)
+                chunk = self._audio_data[self._position: self._position + n]
+                self._position += n
 
-            n = min(frames, remaining)
-            chunk = self._audio_data[self._position: self._position + n]
-            self._position += n
+            if self._cd_stream is not None:
+                self._viz_audio_data = np.concatenate((self._viz_audio_data, chunk))[-4096:]
 
         # Effet vinyle (avant spatialisation)
         if self.vinyl and self.vinyl.config.enabled:
@@ -451,6 +563,30 @@ class AudioEngine:
         pos_sec = self._position / self._sample_rate
         if self.on_position_changed:
             self.on_position_changed(pos_sec)
+
+    def _prefetch_cd(self):
+        try:
+            while not self._cd_cancel.is_set() and self._cd_stream and self._cd_queue is not None:
+                chunk = self._cd_stream.read_chunk()
+                if chunk is None:
+                    break
+                while not self._cd_cancel.is_set():
+                    try:
+                        self._cd_queue.put(
+                            chunk.astype(np.float32) / 32768.0,
+                            timeout=0.1,
+                        )
+                        break
+                    except queue.Full:
+                        continue
+        except Exception as exc:
+            if self._cd_cancel.is_set():
+                return
+            self._cd_eof = True
+            if self.on_error:
+                self.on_error(str(exc))
+        finally:
+            self._cd_eof = True
 
     def _stream_finished(self):
         if self.state == self.STATE_PLAYING:
@@ -504,10 +640,15 @@ class AudioEngine:
         with self._lock:
             if self.state != self.STATE_PLAYING or self._audio_data is None:
                 return np.zeros(n_bands, dtype=np.float32)
-            pos = self._position
-            data = self._audio_data
+            if self._cd_stream is not None:
+                data = self._viz_audio_data.copy()
+                pos = len(data)
+                total = len(data)
+            else:
+                pos = self._position
+                data = self._audio_data
+                total = self._total_frames
             sr = self._sample_rate
-            total = self._total_frames
 
         # Fenêtre plus large que la taille de bloc de lecture : nécessaire
         # pour obtenir une résolution fréquentielle correcte dans les
@@ -561,6 +702,11 @@ class AudioEngine:
 
     def set_volume(self, vol: float):
         self.config.master_volume = max(0.0, min(2.0, vol))
+        if self._cd:
+            try:
+                self._cd.set_volume(self.config.master_volume)
+            except Exception:
+                pass
 
     def update_lpf(self):
         self._lpf.set(self.config.lfe_low_pass_hz, self._sample_rate)
