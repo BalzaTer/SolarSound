@@ -8,23 +8,27 @@
     "screen_name": "SONY TV",
     "maximized": true
   },
-  "playlist_tracks": [],
+  "playlist_tracks": [
+    "D:/Musique/Musique Chaîne HI-FI/BTS/BTS - Dynamite (Lyrics).mp3"
+  ],
   "current_index": 0,
   "play_mode": "SEQUENTIAL",
-  "volume": 100,
+  "volume": 79,
   "spatial_config": {
     "gain_fl": 1.0,
     "gain_fr": 1.0,
     "gain_c": 0.0,
-    "gain_lfe": 0.8,
-    "gain_sl": 0.8,
-    "gain_sr": 0.8,
+    "gain_lfe": 0.16,
+    "gain_sl": 1.49,
+    "gain_sr": 1.49,
     "double_front_to_surround": true,
-    "surround_blend": 0.6,
+    "surround_blend": 1.0,
+    "phase_to_surround": false,
+    "phase_rear_blend": 1.0,
     "mix_to_lfe": true,
     "lfe_low_pass_hz": 80.0,
-    "lfe_gain": 1.0,
-    "master_volume": 1.0,
+    "lfe_gain": 0.17,
+    "master_volume": 0.05495408738576254,
     "rotation_enabled": false,
     "rotation_speed": 0.1,
     "rotation_spread": 0.5,
@@ -117,7 +121,7 @@
       ]
     },
     "current_preset": "Plat",
-    "mode": "bands"
+    "mode": "free"
   },
   "vinyl_config": {
     "enabled": false,

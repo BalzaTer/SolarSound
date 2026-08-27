@@ -43,6 +43,7 @@ Tout est en Python, et tout est généré par IA, mais ça marche plutôt bien d
 - Doublement facade avant vers les enceintes arrières pour un son plus immersif, ratio réglable (problème de coupure total du mode à régler)
 - Mixage mono vers le caisson de basse, avec fréquence de coupure réglable (40-300Hz) et Gain LFE réglable (0.0 à 2.0)
 - Options stéréos (Inverser le stéréo, mixer en mono et angle de séparation de l'audio
+- Effet phase avant/arrière : le signal en phase reste à l'avant et le signal hors phase est envoyé aux surrounds, avec intensité réglable
 
 ### Onglet "🌀 Rotation"
 

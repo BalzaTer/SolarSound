@@ -96,6 +96,10 @@ class SpatialConfig:
     double_front_to_surround: bool = True
     surround_blend: float = 0.6   # Ratio copie avant→surround
 
+    # Mode phase : le signal commun reste à l'avant, le différentiel va à l'arrière
+    phase_to_surround: bool = False
+    phase_rear_blend: float = 0.8  # Intensité du signal hors phase dans les surrounds
+
     # Mode mixage mono → LFE
     mix_to_lfe: bool = True
     lfe_low_pass_hz: float = 80.0  # Fréquence de coupure passe-bas LFE
@@ -481,8 +485,20 @@ class AudioEngine:
 
         else:
             # ── Mode statique classique ───────────────────────────────
-            out[:, 0] = L * cfg.gain_fl
-            out[:, 1] = R * cfg.gain_fr
+            if cfg.phase_to_surround:
+                # Mid (en phase) à l'avant, Side (hors phase) à l'arrière.
+                # Le LFE est volontairement calculé plus haut depuis le Mid.
+                mid = (L + R) * 0.5
+                side = (L - R) * 0.5
+                rear = np.clip(cfg.phase_rear_blend, 0.0, 1.0)
+                front_side = 1.0 - rear
+                out[:, 0] = (mid + front_side * side) * cfg.gain_fl
+                out[:, 1] = (mid - front_side * side) * cfg.gain_fr
+                out[:, 4] = side * rear * cfg.gain_sl
+                out[:, 5] = -side * rear * cfg.gain_sr
+            else:
+                out[:, 0] = L * cfg.gain_fl
+                out[:, 1] = R * cfg.gain_fr
 
             if cfg.gain_c > 0:
                 out[:, 2] = ((L + R) * 0.5) * cfg.gain_c
@@ -492,10 +508,10 @@ class AudioEngine:
                 filtered = self._lpf.process(mono)
                 out[:, 3] = filtered * cfg.gain_lfe * cfg.lfe_gain
 
-            if cfg.double_front_to_surround:
+            if not cfg.phase_to_surround and cfg.double_front_to_surround:
                 out[:, 4] = L * cfg.surround_blend * cfg.gain_sl
                 out[:, 5] = R * cfg.surround_blend * cfg.gain_sr
-            else:
+            elif not cfg.phase_to_surround:
                 out[:, 4] = L * cfg.gain_sl
                 out[:, 5] = R * cfg.gain_sr
 

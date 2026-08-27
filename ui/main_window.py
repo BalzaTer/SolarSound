@@ -261,6 +261,8 @@ class MainWindow(QMainWindow):
             "gain_sr":  cfg.gain_sr,
             "double_front_to_surround": cfg.double_front_to_surround,
             "surround_blend": cfg.surround_blend,
+            "phase_to_surround": cfg.phase_to_surround,
+            "phase_rear_blend": cfg.phase_rear_blend,
             "mix_to_lfe": cfg.mix_to_lfe,
             "lfe_low_pass_hz": cfg.lfe_low_pass_hz,
             "lfe_gain": cfg.lfe_gain,
@@ -325,6 +327,8 @@ class MainWindow(QMainWindow):
             cfg.gain_sr  = sc.get("gain_sr",  0.0)
             cfg.double_front_to_surround = sc.get("double_front_to_surround", False)
             cfg.surround_blend = sc.get("surround_blend", 0.6)
+            cfg.phase_to_surround = sc.get("phase_to_surround", False)
+            cfg.phase_rear_blend = sc.get("phase_rear_blend", 0.8)
             cfg.mix_to_lfe = sc.get("mix_to_lfe", False)
             cfg.lfe_low_pass_hz = sc.get("lfe_low_pass_hz", 120.0)
             cfg.lfe_gain = sc.get("lfe_gain", 1.0)

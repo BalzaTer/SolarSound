@@ -170,6 +170,29 @@ class SpatialPanel(QWidget):
         surr_layout.addLayout(blend_row)
         main_layout.addWidget(surround_group)
 
+        # ── Répartition selon la phase ──────────────────────────────
+        phase_group = QGroupBox("EFFET PHASE : AVANT / ARRIÈRE")
+        phase_layout = QVBoxLayout(phase_group)
+        phase_layout.setSpacing(6)
+
+        self.chk_phase = QCheckBox("Envoyer le signal hors phase vers les surrounds")
+        self.chk_phase.setChecked(self.config.phase_to_surround)
+        phase_layout.addWidget(self.chk_phase)
+
+        phase_row = QHBoxLayout()
+        phase_row.addWidget(QLabel("Intensité arrière :"))
+        self.sld_phase = QSlider(Qt.Orientation.Horizontal)
+        self.sld_phase.setRange(0, 100)
+        self.sld_phase.setValue(int(self.config.phase_rear_blend * 100))
+        self.sld_phase.setEnabled(self.config.phase_to_surround)
+        phase_row.addWidget(self.sld_phase)
+        self.lbl_phase = QLabel(f"{self.config.phase_rear_blend:.0%}")
+        self.lbl_phase.setFixedWidth(40)
+        self.lbl_phase.setStyleSheet("color: #f5a623; font-family: Consolas;")
+        phase_row.addWidget(self.lbl_phase)
+        phase_layout.addLayout(phase_row)
+        main_layout.addWidget(phase_group)
+
         # ── Mixage LFE ────────────────────────────────────────────────
         lfe_group = QGroupBox("MIXAGE MONO → CAISSON DE BASSE (LFE)")
         lfe_layout = QGridLayout(lfe_group)
@@ -247,6 +270,8 @@ class SpatialPanel(QWidget):
 
         self.chk_double.toggled.connect(self._on_double_toggled)
         self.sld_blend.valueChanged.connect(self._on_blend_changed)
+        self.chk_phase.toggled.connect(self._on_phase_toggled)
+        self.sld_phase.valueChanged.connect(self._on_phase_changed)
 
         self.chk_lfe.toggled.connect(self._on_lfe_toggled)
         self.spin_lpf.valueChanged.connect(self._on_lpf_changed)
@@ -269,6 +294,17 @@ class SpatialPanel(QWidget):
         val = v / 100.0
         self.lbl_blend.setText(f"{val:.0%}")
         self.config.surround_blend = val
+        self.config_changed.emit(self.config)
+
+    def _on_phase_toggled(self, checked):
+        self.config.phase_to_surround = checked
+        self.sld_phase.setEnabled(checked)
+        self.config_changed.emit(self.config)
+
+    def _on_phase_changed(self, v):
+        val = v / 100.0
+        self.lbl_phase.setText(f"{val:.0%}")
+        self.config.phase_rear_blend = val
         self.config_changed.emit(self.config)
 
     def _on_lfe_toggled(self, checked):
@@ -314,6 +350,8 @@ class SpatialPanel(QWidget):
         self.ch_sr.set_value(config.gain_sr)
         self.chk_double.setChecked(config.double_front_to_surround)
         self.sld_blend.setValue(int(config.surround_blend * 100))
+        self.chk_phase.setChecked(config.phase_to_surround)
+        self.sld_phase.setValue(int(config.phase_rear_blend * 100))
         self.chk_lfe.setChecked(config.mix_to_lfe)
         self.spin_lpf.setValue(config.lfe_low_pass_hz)
         self.sld_lfe_gain.setValue(int(config.lfe_gain * 100))
