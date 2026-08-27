@@ -26,6 +26,7 @@ Tout est en Python, et tout est généré par IA, mais ça marche plutôt bien d
 - Le bouton **"Vider"** permet de retirer l'entiereté des fichiers de la liste des fichiers ouverts dans le logiciel, une confirmation est demandée avant l'action
 - Permet la création de playlist, enregistrables et réouvrables à l'aide de fichier .playlist (Boutons **"Enregistrer"** et **"Ouvrir"**)
 - Double clic sur un fichier permet de le mettre directement en lecture
+- Le bouton **CD Audio** permet l'ajout de toutes les musiques d'un CD dans la playlist, il est donc possible de créer une playlist mix avec des audios sur CD, mémoire flash, disque dur, ou même lecteur de floppy disque pourquoi pas !
 
 ### Onglet "🎬 Vidéo"
 
