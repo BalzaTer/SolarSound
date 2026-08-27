@@ -14,6 +14,7 @@ Tout est en Python, et tout est généré par IA, mais ça marche plutôt bien d
 - Le bouton 🔀/➡️, permet un mode aléatoire (🔀) dans le choix des fichiers ou continu (➡️), l'ordre des fichiers peut alors être changé en glissant déposant les fichiers dans la liste des fichiers ouverts dans le logiciel (Onglet "📋 Playlist")
 - Les boutons "⏮" et "⏭" permettent de passer à la musique suivante ou précédente
 - Le bouton "⏹" remet à 0 et en pause la musique, tandis que le bouton ▶️/⏸ permet de jouer/mettre en pause le fichier
+- Animation jolie dans les tons orangés/jaunes, bougeant avec la musique en fonction de l'intensité de chaque fréquence. Activable/Désactivable en survolant et clic droit.
 
 ### Onglet "📋 Playlist"
 
