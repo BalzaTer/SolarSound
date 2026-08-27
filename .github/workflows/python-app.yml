@@ -11,47 +11,43 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Tu peux ajouter windows-latest/macos-latest si besoin
+    runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4  # Compatible avec Node.js 24
 
       - name: Set up Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v4  # Compatible avec Node.js 24
         with:
           python-version: "3.10"
 
-      # Installation des dépendances depuis requirements.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install flake8 pytest pytest-qt
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      # Linting avec flake8
       - name: Lint with flake8
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-      # Tests avec pytest (incluant pytest-qt pour PyQt6)
       - name: Test with pytest
         run: |
           pytest
 
-      # --- Étape optionnelle : Packaging avec PyInstaller ---
+      # Packaging optionnel (uniquement sur la branche main)
       - name: Package with PyInstaller
-        if: github.ref == 'refs/heads/main'  # Seule la branche main déclenche le packaging
+        if: github.ref == 'refs/heads/main'
         run: |
           pip install pyinstaller
-          pyinstaller --onefile --windowed --name "SolarSound" main.py  # Remplace main.py par ton fichier principal
+          pyinstaller --onefile --windowed --name "SolarSound" main.py
           mkdir -p artifacts
           mv dist/SolarSound artifacts/
 
-      # Upload de l'artefact (exécutable) avec la version v4 de upload-artifact
       - name: Upload artifact
         if: github.ref == 'refs/heads/main'
-        uses: actions/upload-artifact@v4  # Version mise à jour
+        uses: actions/upload-artifact@v4
         with:
           name: SolarSound-executable
           path: artifacts/
