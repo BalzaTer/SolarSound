@@ -1,4 +1,4 @@
-"""Lecture des métadonnées audio (ID3, RIFF INFO)"""
+"""Lecture des métadonnées audio (ID3, RIFF INFO, Vorbis et MP4)."""
 
 import os
 from typing import Optional
@@ -29,12 +29,13 @@ def read_metadata(filepath: str) -> dict:
         "album": "",
         "duration": 0.0,
     }
-    ext = filepath.lower().rsplit(".", 1)[-1]
+    ext = os.path.splitext(filepath)[1].lower()
 
-    if ext == "wav":
+    if ext == ".wav":
         _read_wav(filepath, result)
-    elif ext == "mp3":
-        _read_mp3(filepath, result)
+    if MUTAGEN_OK:
+        # Les tags WAV sont complétés par Mutagen après la durée RIFF.
+        _read_mutagen(filepath, result)
 
     return result
 
@@ -126,6 +127,11 @@ def _find_sidecar_cover_art(filepath: str) -> Optional[bytes]:
 
 
 def _read_mp3(filepath: str, result: dict):
+    _read_mutagen(filepath, result)
+
+
+def _read_mutagen(filepath: str, result: dict):
+    """Lit les tags communs de tous les formats reconnus par Mutagen."""
     if not MUTAGEN_OK:
         return
     try:
@@ -133,12 +139,10 @@ def _read_mp3(filepath: str, result: dict):
         if audio is None:
             return
         result["duration"] = audio.info.length if hasattr(audio, "info") else 0.0
-        if audio.get("title"):
-            result["title"] = str(audio["title"][0])
-        if audio.get("artist"):
-            result["artist"] = str(audio["artist"][0])
-        if audio.get("album"):
-            result["album"] = str(audio["album"][0])
+        for field in ("title", "artist", "album"):
+            value = audio.get(field)
+            if value:
+                result[field] = str(value[0] if isinstance(value, (list, tuple)) else value)
     except Exception:
         pass
 

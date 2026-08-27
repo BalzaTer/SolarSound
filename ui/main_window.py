@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
         - vidéo → ajoute et lance le lecteur vidéo
         """
         playlist_files = [p for p in paths if p.lower().endswith(".playlist")]
-        audio_files    = [p for p in paths if p.lower().endswith((".mp3", ".wav"))]
+        audio_files    = [p for p in paths if os.path.splitext(p)[1].lower() in Playlist.SUPPORTED_FORMATS]
         video_files    = [p for p in paths if any(
             p.lower().endswith(ext) for ext in SUPPORTED_VIDEO_FORMATS
         )]

@@ -108,7 +108,7 @@ class PlaylistWidget(QWidget):
     def _on_add_files(self):
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Ajouter des fichiers audio et vidéo",
-            "", "Fichiers média (*.mp3 *.wav *.mp4 *.mkv *.avi *.mov *.wmv *.m4v *.flv *.webm);;Audio (*.mp3 *.wav);;Vidéo (*.mp4 *.mkv *.avi *.mov *.wmv *.m4v *.flv *.webm);;Tous (*.*)"
+            "", "Fichiers média (*.mp3 *.wav *.flac *.ogg *.opus *.aiff *.aif *.au *.rf64 *.w64 *.mp4 *.mkv *.avi *.mov *.wmv *.m4v *.flv *.webm);;Audio (*.mp3 *.wav *.flac *.ogg *.opus *.aiff *.aif *.au *.rf64 *.w64);;Vidéo (*.mp4 *.mkv *.avi *.mov *.wmv *.m4v *.flv *.webm);;Tous (*.*)"
         )
         if paths:
             self._add_files(paths)
@@ -122,7 +122,7 @@ class PlaylistWidget(QWidget):
             for root, _, files in os.walk(folder):
                 for f in sorted(files):
                     ext = f.lower()
-                    if any(ext.endswith(e) for e in (".mp3",".wav",".mp4",".mkv",".avi",".mov",".wmv",".m4v",".flv",".webm",".ts",".mpeg")):
+                    if any(ext.endswith(e) for e in Playlist.ALL_FORMATS):
                         paths.append(os.path.join(root, f))
             if paths:
                 self._add_files(paths)

@@ -53,7 +53,8 @@ def main():
         if os.path.isfile(arg):
             ext = os.path.splitext(arg)[1].lower()
             VIDEO_EXTS = (".mp4",".mkv",".avi",".mov",".wmv",".m4v",".flv",".webm")
-            if ext in (".mp3", ".wav", ".playlist") or ext in VIDEO_EXTS:
+            AUDIO_EXTS = (".mp3", ".wav", ".flac", ".ogg", ".opus", ".aiff", ".aif", ".au", ".rf64", ".w64")
+            if ext in AUDIO_EXTS or ext == ".playlist" or ext in VIDEO_EXTS:
                 open_files.append(arg)
 
     splash.set_progress(15, "Preparation des composants audio...")

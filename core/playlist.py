@@ -36,7 +36,10 @@ class Track:
 
 
 class Playlist:
-    SUPPORTED_FORMATS = (".mp3", ".wav")
+    SUPPORTED_FORMATS = (
+        ".mp3", ".wav", ".flac", ".ogg", ".opus", ".aiff", ".aif",
+        ".au", ".rf64", ".w64",
+    )
     SUPPORTED_VIDEO_FORMATS = (".mp4", ".mkv", ".avi", ".mov", ".wmv",
                                ".dts", ".m4v", ".flv", ".webm",
                                ".ts", ".m2ts", ".mpg", ".mpeg")
