@@ -46,9 +46,12 @@ class SessionState:
     playlist_tracks: list = None # Chemins des pistes en mémoire
     current_index: int = 0
     play_mode: str = "SEQUENTIAL"
+    current_tab: int = 1
 
     # Audio
     volume: int = 100
+    output_device: int = None
+    progress_style: str = "classic"
     spatial_config: dict = None
     equalizer_config: dict = None
 
@@ -97,13 +100,17 @@ class SessionManager:
                 "playlist_tracks": state.playlist_tracks,
                 "current_index": state.current_index,
                 "play_mode": state.play_mode,
+                "current_tab": state.current_tab,
                 "volume": state.volume,
+                "output_device": state.output_device,
+                "progress_style": state.progress_style,
                 "spatial_config": state.spatial_config,
                 "equalizer_config": state.equalizer_config,
                 "vinyl_config": getattr(state, "vinyl_config", {}),
                 "shortcuts": getattr(state, "shortcuts", {}),
                 "colors": getattr(state, "colors", {}),
                 "font_cfg": getattr(state, "font_cfg", {}),
+                "visualizer_enabled": getattr(state, "visualizer_enabled", True),
             }
             with open(self._path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -130,13 +137,17 @@ class SessionManager:
             state.playlist_tracks = data.get("playlist_tracks", [])
             state.current_index   = data.get("current_index", 0)
             state.play_mode       = data.get("play_mode", "SEQUENTIAL")
+            state.current_tab     = data.get("current_tab", 1)
             state.volume          = data.get("volume", 100)
+            state.output_device    = data.get("output_device")
+            state.progress_style   = data.get("progress_style", "classic")
             state.spatial_config  = data.get("spatial_config", {})
             state.equalizer_config = data.get("equalizer_config", {})
             state.vinyl_config    = data.get("vinyl_config", {})
             state.shortcuts       = data.get("shortcuts", {})
             state.colors          = data.get("colors", {})
             state.font_cfg        = data.get("font_cfg", {})
+            state.visualizer_enabled = data.get("visualizer_enabled", True)
         except Exception as e:
             print(f"[Session] Impossible de charger : {e}")
         return state

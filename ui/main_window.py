@@ -6,13 +6,14 @@ from typing import List
 
 from PyQt6.QtWidgets import (
     QTabBar,
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
     QPushButton, QLabel, QSlider, QTabWidget, QFrame,
     QSizePolicy, QMenuBar, QStatusBar, QMessageBox,
     QFileDialog, QGroupBox, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal
-from PyQt6.QtGui import QAction, QFont, QIcon, QKeySequence, QPixmap
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 
 try:
     from .settings_panel import SettingsPanel, build_stylesheet, DEFAULT_SHORTCUTS, DEFAULT_COLORS, DEFAULT_FONT
@@ -25,6 +26,7 @@ try:
     from .vinyl_panel import VinylPanel
     from .equalizer_panel import EqualizerPanel
     from .visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
+    from .progress_widget import ClickableProgressSlider, IntensityProgressBar
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
     from ..audio.engine import AudioEngine, SpatialConfig
@@ -50,6 +52,7 @@ except (ImportError, ModuleNotFoundError):
     from ui.rotation_panel import RotationPanel
     from ui.vinyl_panel import VinylPanel
     from ui.visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
+    from ui.progress_widget import ClickableProgressSlider, IntensityProgressBar
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
     from audio.engine import AudioEngine, SpatialConfig
@@ -163,6 +166,8 @@ class MainWindow(QMainWindow):
         self._shortcuts = dict(DEFAULT_SHORTCUTS)
         self._colors    = dict(DEFAULT_COLORS)
         self._font_cfg  = dict(DEFAULT_FONT)
+        self._progress_style = "classic"
+        self._last_theme_colors = dict(DEFAULT_COLORS)
 
         # Mode courant : 'audio' ou 'video'
         self._media_mode = 'audio'
@@ -170,7 +175,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("SolarSound")
         self.setWindowIcon(QIcon(self._icon_path("solarsound.ico")))
         self.setMinimumSize(900, 680)
-        self.setStyleSheet(STYLESHEET)
+        self.setStyleSheet(build_stylesheet(self._colors, self._font_cfg))
 
         self._build_ui()
         # Autoriser le glisser-déposer sur la fenêtre principale
@@ -219,6 +224,79 @@ class MainWindow(QMainWindow):
 
     def _icon_path(self, name):
         return os.path.join(self._icons_dir, name)
+
+    def _resync_local_styles(self, colors):
+        """Remplace les anciennes couleurs littérales des styles locaux."""
+        aliases = {
+            "#f5a623": "accent", "#f5c842": "accent", "#ffbe4d": "accent",
+            "#c47d0a": "accent_dark", "#e8d5a0": "text_primary",
+            "#a08060": "text_secondary", "#7a6840": "text_secondary",
+            "#5a4a28": "text_muted", "#3d3420": "border_bright",
+            "#2a2416": "border", "#1e1a12": "btn_bg", "#0f0d0a": "bg_main",
+            "#0c0a07": "bg_list", "#2a2008": "highlight_bg", "#202020": "bg_main",
+        }
+        replacements = {}
+        replacements["rgba(245,166,35,"] = self._rgba_prefix(colors.get("accent", DEFAULT_COLORS["accent"]))
+        replacements["rgba(10,8,6,"] = self._rgba_prefix(colors.get("bg_main", DEFAULT_COLORS["bg_main"]))
+        previous = getattr(self, "_last_theme_colors", DEFAULT_COLORS)
+        for old, key in aliases.items():
+            replacements[old] = colors.get(key, DEFAULT_COLORS[key])
+            replacements[previous.get(key, DEFAULT_COLORS[key])] = colors.get(key, DEFAULT_COLORS[key])
+
+        for key, old in previous.items():
+            if key not in DEFAULT_COLORS:
+                continue
+            old_color = QColor(old)
+            new_color = QColor(colors.get(key, DEFAULT_COLORS[key]))
+            if old_color.isValid() and new_color.isValid():
+                old_rgb = f"rgba({old_color.red()},{old_color.green()},{old_color.blue()},"
+                new_rgb = f"rgba({new_color.red()},{new_color.green()},{new_color.blue()},"
+                replacements[old_rgb] = new_rgb
+
+        for widget in self.findChildren(QWidget):
+            style = widget.styleSheet()
+            for old, new in replacements.items():
+                style = style.replace(old, new)
+            if style != widget.styleSheet():
+                widget.setStyleSheet(style)
+        self._last_theme_colors = dict(colors)
+
+    @staticmethod
+    def _rgba_prefix(color):
+        value = QColor(color)
+        return f"rgba({value.red()},{value.green()},{value.blue()}," if value.isValid() else "rgba(245,166,35,"
+
+    def _tinted_icon(self, name, color):
+        """Rend un SVG monochrome avec la couleur d'accent actuelle."""
+        path = self._icon_path(name)
+        if not name or not os.path.isfile(path):
+            return QIcon()
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        QSvgRenderer(path).render(painter)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color))
+        painter.end()
+        return QIcon(pixmap)
+
+    def _refresh_transport_icons(self):
+        accent = self._colors.get("accent", DEFAULT_COLORS["accent"])
+        button_background = QColor(self._colors.get("btn_bg", DEFAULT_COLORS["btn_bg"]))
+        play_color = "#ffffff" if button_background.lightness() > 150 else button_background.name()
+        for button, name in (
+            (self.btn_order, "sequential.svg"), (self.btn_loop, "boucle.svg"),
+            (self.btn_prev, "preview.svg"), (self.btn_stop, "stop.svg"),
+            (self.btn_next, "next.svg"),
+        ):
+            button.setIcon(self._tinted_icon(name, accent))
+        self.btn_play.setIcon(self._tinted_icon("play.svg", play_color))
+
+    def _set_play_icon(self, playing: bool):
+        button_background = QColor(self._colors.get("btn_bg", DEFAULT_COLORS["btn_bg"]))
+        icon_color = "#ffffff" if button_background.lightness() > 150 else button_background.name()
+        icon_name = "pause.svg" if playing else "play.svg"
+        self.btn_play.setIcon(self._tinted_icon(icon_name, icon_color))
 
     # ══════════════════════════════════════════════════════════════════
     # SESSION — Sauvegarde / Restauration
@@ -294,7 +372,10 @@ class MainWindow(QMainWindow):
             playlist_tracks=tracks,
             current_index=max(0, self.playlist.current_index),
             play_mode=self.playlist.play_mode.name,
+            current_tab=self._tabs.currentIndex(),
             volume=self.sld_volume.value(),
+            output_device=self.engine.output_device,
+            progress_style=self._progress_style,
             spatial_config=spatial,
             equalizer_config=equalizer,
         )
@@ -310,10 +391,36 @@ class MainWindow(QMainWindow):
         # ── Fenêtre & écran ──────────────────────────────────────────
         self._restore_window_geometry(state.window)
 
+        # ── Paramètres d'interface ──────────────────────────────────
+        self._shortcuts = {**DEFAULT_SHORTCUTS, **state.shortcuts}
+        self._colors = {**DEFAULT_COLORS, **state.colors}
+        self._font_cfg = {**DEFAULT_FONT, **state.font_cfg}
+        self.settings_panel.apply_all(self._shortcuts, self._colors, self._font_cfg)
+        self.setStyleSheet(build_stylesheet(self._colors, self._font_cfg))
+        self._resync_local_styles(self._colors)
+        self._apply_shortcuts()
+        self.visualizer.set_theme_colors(self._colors)
+        self._refresh_transport_icons()
+        self.equalizer_panel.set_theme_colors(self._colors)
+        self.spatial_panel.set_theme_colors(self._colors)
+        self.rotation_panel.set_theme_colors(self._colors)
+        if self.vinyl_panel is not None:
+            self.vinyl_panel.set_theme_colors(self._colors)
+        self.playlist_widget.set_theme_colors(self._colors)
+        self.video_window.controls.set_theme_colors(self._colors)
+
         # ── Volume ───────────────────────────────────────────────────
         saved_value = state.volume
         slider_value = max(50, min(150, saved_value))
         self.sld_volume.setValue(slider_value)
+
+        available_ids = {device[0] for device in self.engine.output_devices()}
+        if state.output_device in available_ids:
+            self.engine.output_device = state.output_device
+            self.settings_panel.audio_tab.cmb_output.setCurrentIndex(
+                self.settings_panel.audio_tab.cmb_output.findData(state.output_device)
+            )
+        self._set_progress_style(getattr(state, "progress_style", "classic"), emit=False)
 
         # ── Config spatiale ──────────────────────────────────────────
         if state.spatial_config:
@@ -368,6 +475,8 @@ class MainWindow(QMainWindow):
         except KeyError:
             mode = PlayMode.SEQUENTIAL
         self._set_play_mode(mode)
+        if 0 <= state.current_tab < self._tabs.count():
+            self._tabs.setCurrentIndex(state.current_tab)
 
     def _restore_window_geometry(self, win: WindowState):
         """Place la fenêtre sur le bon écran, à la bonne taille."""
@@ -506,6 +615,7 @@ class MainWindow(QMainWindow):
         root.addLayout(transport)
 
         self._tabs = self._build_tabs()
+        self._tabs.currentChanged.connect(lambda _index: self._schedule_save())
         root.addWidget(self._tabs, stretch=1)
 
     def _build_header(self) -> QHBoxLayout:
@@ -514,17 +624,19 @@ class MainWindow(QMainWindow):
         lbl_title = QLabel("SOLAR")
         lbl_title.setObjectName("title_label")
         lbl_title.setStyleSheet(
-            "font-size: 26px; font-weight: 900; color: #f5a623; letter-spacing: 4px;"
+            "font-size: 26px; font-weight: 900; letter-spacing: 4px;"
         )
 
         lbl_sound = QLabel("SOUND")
+        lbl_sound.setObjectName("sound_label")
         lbl_sound.setStyleSheet(
-            "font-size: 26px; font-weight: 300; color: #e8d5a0; letter-spacing: 4px;"
+            "font-size: 26px; font-weight: 300; letter-spacing: 4px;"
         )
 
         lbl_sub = QLabel("LECTEUR 5.1")
+        lbl_sub.setObjectName("subtitle_label")
         lbl_sub.setStyleSheet(
-            "font-size: 10px; color: #5a4a28; letter-spacing: 6px; margin-left: 4px;"
+            "font-size: 10px; letter-spacing: 6px; margin-left: 4px;"
         )
 
         layout.addWidget(lbl_title)
@@ -571,15 +683,13 @@ class MainWindow(QMainWindow):
 
         self.lbl_title = QLabel("Aucun morceau")
         self.lbl_title.setObjectName("track_title")
-        self.lbl_title.setStyleSheet(
-            "font-size: 17px; font-weight: bold; color: #f5c842;"
-        )
+        self.lbl_title.setStyleSheet("font-size: 17px; font-weight: bold;")
         self.lbl_title.setWordWrap(False)
         info_col.addWidget(self.lbl_title)
 
         self.lbl_artist = QLabel("—")
         self.lbl_artist.setObjectName("track_artist")
-        self.lbl_artist.setStyleSheet("font-size: 13px; color: #a08060;")
+        self.lbl_artist.setStyleSheet("font-size: 13px;")
         info_col.addWidget(self.lbl_artist)
 
         self.lbl_album = QLabel("")
@@ -629,12 +739,19 @@ class MainWindow(QMainWindow):
         self.lbl_pos.setStyleSheet("font-family: 'Consolas', monospace; color: #7a6840;")
         layout.addWidget(self.lbl_pos)
 
-        self.sld_progress = QSlider(Qt.Orientation.Horizontal)
+        self.sld_progress = ClickableProgressSlider(Qt.Orientation.Horizontal)
         self.sld_progress.setRange(0, 1000)
         self.sld_progress.setValue(0)
         self.sld_progress.sliderPressed.connect(self._on_seek_start)
+        self.sld_progress.sliderMoved.connect(self._on_progress_dragged)
         self.sld_progress.sliderReleased.connect(self._on_seek_end)
-        layout.addWidget(self.sld_progress, stretch=1)
+        self.intensity_progress = IntensityProgressBar()
+        self.intensity_progress.position_requested.connect(self._on_intensity_seek)
+        self.intensity_progress.position_released.connect(self._on_intensity_seek_end)
+        self.progress_stack = QStackedWidget()
+        self.progress_stack.addWidget(self.sld_progress)
+        self.progress_stack.addWidget(self.intensity_progress)
+        layout.addWidget(self.progress_stack, stretch=1)
 
         self.lbl_dur = QLabel("0:00")
         self.lbl_dur.setObjectName("time_label")
@@ -654,14 +771,14 @@ class MainWindow(QMainWindow):
         mode_layout.setSpacing(4)
 
         self.btn_order = QPushButton()
-        self.btn_order.setIcon(QIcon(self._icon_path("sequential.svg")))
+        self.btn_order.setIcon(self._tinted_icon("sequential.svg", self._colors["accent"]))
         self.btn_order.setIconSize(QSize(18, 18))
         self.btn_order.setToolTip("Lecture séquentielle")
         self.btn_order.setCheckable(False)
         self.btn_order.setFixedSize(32, 32)
 
         self.btn_loop = QPushButton()
-        self.btn_loop.setIcon(QIcon(self._icon_path("boucle.svg")))
+        self.btn_loop.setIcon(self._tinted_icon("boucle.svg", self._colors["accent"]))
         self.btn_loop.setIconSize(QSize(18, 18))
         self.btn_loop.setToolTip("Boucle sur toute la liste")
         self.btn_loop.setCheckable(False)
@@ -681,7 +798,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(24)
 
         self.btn_prev = QPushButton()
-        self.btn_prev.setIcon(QIcon(self._icon_path("preview.svg")))
+        self.btn_prev.setIcon(self._tinted_icon("preview.svg", self._colors["accent"]))
         self.btn_prev.setIconSize(QSize(24, 24))
         self.btn_prev.setObjectName("btn_prev")
         self.btn_prev.setToolTip("Morceau précédent")
@@ -691,7 +808,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(8)
 
         self.btn_stop = QPushButton()
-        self.btn_stop.setIcon(QIcon(self._icon_path("stop.svg")))
+        self.btn_stop.setIcon(self._tinted_icon("stop.svg", self._colors["accent"]))
         self.btn_stop.setIconSize(QSize(24, 24))
         self.btn_stop.setObjectName("btn_stop")
         self.btn_stop.setToolTip("Stop")
@@ -701,7 +818,9 @@ class MainWindow(QMainWindow):
         layout.addSpacing(8)
 
         self.btn_play = QPushButton()
-        self.btn_play.setIcon(QIcon(self._icon_path("play.svg")))
+        button_background = QColor(self._colors["btn_bg"])
+        play_color = "#ffffff" if button_background.lightness() > 150 else button_background.name()
+        self.btn_play.setIcon(self._tinted_icon("play.svg", play_color))
         self.btn_play.setIconSize(QSize(24, 24))
         self.btn_play.setObjectName("btn_play")
         self.btn_play.setToolTip("Lecture / Pause")
@@ -711,7 +830,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(8)
 
         self.btn_next = QPushButton()
-        self.btn_next.setIcon(QIcon(self._icon_path("next.svg")))
+        self.btn_next.setIcon(self._tinted_icon("next.svg", self._colors["accent"]))
         self.btn_next.setIconSize(QSize(24, 24))
         self.btn_next.setObjectName("btn_next")
         self.btn_next.setToolTip("Morceau suivant")
@@ -761,8 +880,11 @@ class MainWindow(QMainWindow):
 
         # ── Paramètres ────────────────────────────────────────────────
         self.settings_panel = SettingsPanel(
-            self._shortcuts, self._colors, self._font_cfg
+            self._shortcuts, self._colors, self._font_cfg,
+            self.engine.output_devices(), self.engine.output_device, self._progress_style
         )
+        self.settings_panel.output_changed.connect(self._on_output_changed)
+        self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
         self.settings_panel.shortcuts_changed.connect(self._on_shortcuts_changed)
         self.settings_panel.colors_changed.connect(self._on_colors_changed)
         self.settings_panel.font_changed.connect(self._on_font_changed)
@@ -854,7 +976,9 @@ class MainWindow(QMainWindow):
         pos = self.engine.position_seconds
         dur = self.engine.duration_seconds
         if dur > 0:
-            self.sld_progress.setValue(int(pos / dur * 1000))
+            progress = int(pos / dur * 1000)
+            self.sld_progress.setValue(progress)
+            self.intensity_progress.set_progress(progress)
         self.lbl_pos.setText(format_duration(pos))
 
     # ══════════════════════════════════════════════════════════════════
@@ -894,7 +1018,7 @@ class MainWindow(QMainWindow):
             else:
                 self.engine.stop()
             self._media_mode = 'audio'
-            self.btn_play.setIcon(QIcon(self._icon_path('play.svg')))
+            self._set_play_icon(False)
             self.status_bar.showMessage('Fin de liste')
 
     def _handle_track_error(self, track, error_message: str):
@@ -911,12 +1035,12 @@ class MainWindow(QMainWindow):
             if self.video_engine.state == VideoEngine.STATE_PLAYING:
                 self.video_engine.pause()
                 self.video_window.controls.set_playing(False)
-                self.btn_play.setIcon(QIcon(self._icon_path('play.svg')))
+                self._set_play_icon(False)
                 self.status_bar.showMessage('En pause')
             elif self.video_engine.state == VideoEngine.STATE_PAUSED:
                 self.video_engine.play()
                 self.video_window.controls.set_playing(True)
-                self.btn_play.setIcon(QIcon(self._icon_path('pause.svg')))
+                self._set_play_icon(True)
                 self.status_bar.showMessage('Lecture')
             else:
                 track = self.playlist.current_track
@@ -925,11 +1049,11 @@ class MainWindow(QMainWindow):
             return
         if self.engine.state == AudioEngine.STATE_PLAYING:
             self.engine.pause()
-            self.btn_play.setIcon(QIcon(self._icon_path('play.svg')))
+            self._set_play_icon(False)
             self.status_bar.showMessage('En pause')
         elif self.engine.state == AudioEngine.STATE_PAUSED:
             self.engine.play()
-            self.btn_play.setIcon(QIcon(self._icon_path('pause.svg')))
+            self._set_play_icon(True)
         else:
             if not self.playlist.tracks:
                 return
@@ -946,7 +1070,7 @@ class MainWindow(QMainWindow):
             self._media_mode = 'audio'
         else:
             self.engine.stop()
-        self.btn_play.setIcon(QIcon(self._icon_path('play.svg')))
+        self._set_play_icon(False)
         self.sld_progress.setValue(0)
         self.lbl_pos.setText('0:00')
         self.status_bar.showMessage('Arrêté')
@@ -990,8 +1114,9 @@ class MainWindow(QMainWindow):
             self.video_engine.stop()
         ok = self.engine.load(track.path)
         if ok:
+            self.intensity_progress.set_levels(self.engine.get_timeline_levels(240))
             self.engine.play()
-            self.btn_play.setIcon(QIcon(self._icon_path("pause.svg")))
+            self._set_play_icon(True)
             self._update_track_display(track)
             self.playlist_widget.set_active_row(index)
             dur = self.engine.duration_seconds
@@ -1067,10 +1192,42 @@ class MainWindow(QMainWindow):
         self._seeking = True
 
     def _on_seek_end(self):
-        dur = self.engine.duration_seconds
-        pos = self.sld_progress.value() / 1000.0 * dur
-        self.engine.seek(pos)
+        self._seek_to_progress(self.sld_progress.value())
         self._seeking = False
+
+    def _on_intensity_seek(self, value: int):
+        self.sld_progress.setValue(value)
+        self.intensity_progress.set_progress(value)
+        self._seeking = True
+        self._seek_to_progress(value)
+
+    def _on_intensity_seek_end(self):
+        self._seeking = False
+
+    def _on_progress_dragged(self, value: int):
+        if self._seeking:
+            self._seek_to_progress(value)
+
+    def _seek_to_progress(self, value: int):
+        self.engine.seek(value / 1000.0 * self.engine.duration_seconds)
+
+    def _set_progress_style(self, style: str, emit: bool = True):
+        self._progress_style = style if style in ("classic", "intensity", "intensity_centered") else "classic"
+        self.settings_panel.audio_tab.cmb_progress.blockSignals(True)
+        self.settings_panel.audio_tab.cmb_progress.setCurrentIndex(
+            self.settings_panel.audio_tab.cmb_progress.findData(self._progress_style)
+        )
+        self.settings_panel.audio_tab.cmb_progress.blockSignals(False)
+        self.progress_stack.setCurrentWidget(
+            self.intensity_progress if self._progress_style != "classic" else self.sld_progress
+        )
+        self.intensity_progress.set_variant(self._progress_style == "intensity_centered")
+        self.intensity_progress.set_theme_colors(self._colors)
+        if emit:
+            self._schedule_save()
+
+    def _on_progress_style_changed(self, style: str):
+        self._set_progress_style(style)
 
     # ══════════════════════════════════════════════════════════════════
     # Mode de lecture
@@ -1087,11 +1244,14 @@ class MainWindow(QMainWindow):
     def _on_loop_toggle(self):
         if self._loop_pref == PlayMode.LOOP_ALL:
             self._loop_pref = PlayMode.LOOP_ONE
+            self._sequential_loop_active = True
+        elif self._loop_pref == PlayMode.LOOP_ONE:
+            self._loop_pref = PlayMode.LOOP_ALL
+            self._sequential_loop_active = False
         else:
             self._loop_pref = PlayMode.LOOP_ALL
-
-        if self._order_mode == PlayMode.SEQUENTIAL:
             self._sequential_loop_active = True
+
         self._apply_play_mode()
 
     def _apply_play_mode(self):
@@ -1111,18 +1271,22 @@ class MainWindow(QMainWindow):
         self._schedule_save()
 
     def _update_mode_buttons(self):
+        accent = self._colors.get("accent", DEFAULT_COLORS["accent"])
         if self._order_mode == PlayMode.RANDOM:
-            self.btn_order.setIcon(QIcon(self._icon_path('aleatoire.svg')))
+            self.btn_order.setIcon(self._tinted_icon('aleatoire.svg', accent))
             self.btn_order.setToolTip('Lecture aléatoire')
         else:
-            self.btn_order.setIcon(QIcon(self._icon_path('sequential.svg')))
+            self.btn_order.setIcon(self._tinted_icon('sequential.svg', accent))
             self.btn_order.setToolTip('Lecture séquentielle')
 
-        if self._loop_pref == PlayMode.LOOP_ALL:
-            self.btn_loop.setIcon(QIcon(self._icon_path('boucle.svg')))
+        if not self._sequential_loop_active:
+            self.btn_loop.setIcon(self._tinted_icon('sequential.svg', accent))
+            self.btn_loop.setToolTip('Boucle désactivée')
+        elif self._loop_pref == PlayMode.LOOP_ALL:
+            self.btn_loop.setIcon(self._tinted_icon('boucle.svg', accent))
             self.btn_loop.setToolTip('Boucle sur toute la liste')
         else:
-            self.btn_loop.setIcon(QIcon(self._icon_path('oneboucle.svg')))
+            self.btn_loop.setIcon(self._tinted_icon('oneboucle.svg', accent))
             self.btn_loop.setToolTip('Boucle sur le morceau actuel')
 
     def _set_play_mode(self, mode: PlayMode):
@@ -1132,6 +1296,7 @@ class MainWindow(QMainWindow):
         elif mode == PlayMode.SEQUENTIAL:
             self._order_mode = PlayMode.SEQUENTIAL
             self._sequential_loop_active = False
+            self._loop_pref = PlayMode.LOOP_ALL
         else:
             self._order_mode = PlayMode.SEQUENTIAL
             self._loop_pref = mode
@@ -1150,12 +1315,29 @@ class MainWindow(QMainWindow):
         self._colors = colors
         ss = build_stylesheet(colors, self._font_cfg)
         self.setStyleSheet(ss)
+        self._resync_local_styles(colors)
+        self.visualizer.set_theme_colors(colors)
+        self.intensity_progress.set_theme_colors(colors)
+        self._refresh_transport_icons()
+        self.equalizer_panel.set_theme_colors(colors)
+        self.spatial_panel.set_theme_colors(colors)
+        self.rotation_panel.set_theme_colors(colors)
+        if self.vinyl_panel is not None:
+            self.vinyl_panel.set_theme_colors(colors)
+        self.playlist_widget.set_theme_colors(colors)
+        self.video_window.controls.set_theme_colors(colors)
         self._schedule_save()
 
     def _on_font_changed(self, font_cfg: dict):
         self._font_cfg = font_cfg
         ss = build_stylesheet(self._colors, font_cfg)
         self.setStyleSheet(ss)
+        self._schedule_save()
+
+    def _on_output_changed(self, device_id):
+        self.engine.output_device = device_id
+        if self.engine.state == self.engine.STATE_PLAYING:
+            self.engine._start_stream()
         self._schedule_save()
 
     def _apply_shortcuts(self):

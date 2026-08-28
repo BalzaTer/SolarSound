@@ -307,6 +307,43 @@ class ColorsTab(QWidget):
         btn_preset_green.clicked.connect(self._preset_green)
         btn_row.addWidget(btn_preset_green)
 
+        presets = {
+            "Violet": {
+                "bg_main": "#110b18", "bg_secondary": "#21132e", "bg_list": "#0b0710",
+                "accent": "#c77dff", "accent_dark": "#7b2cbf", "text_primary": "#f0dcff",
+                "text_secondary": "#b892d3", "text_muted": "#725486", "border": "#38204d",
+                "border_bright": "#5c3475", "highlight_bg": "#32134d", "btn_bg": "#21132e",
+            },
+            "Interface claire": {
+                "bg_main": "#f4f1ea", "bg_secondary": "#e4dfd4", "bg_list": "#fffdf8",
+                "accent": "#b05a00", "accent_dark": "#7a3d00", "text_primary": "#29251f",
+                "text_secondary": "#62584d", "text_muted": "#82766a", "border": "#c9c0b3",
+                "border_bright": "#a79a8a", "highlight_bg": "#f1d8b5", "btn_bg": "#e4dfd4",
+            },
+            "Rouge": {
+                "bg_main": "#180b0b", "bg_secondary": "#2b1111", "bg_list": "#100606",
+                "accent": "#ff5c5c", "accent_dark": "#b51f1f", "text_primary": "#ffe2e2",
+                "text_secondary": "#d49a9a", "text_muted": "#865252", "border": "#4c1d1d",
+                "border_bright": "#763030", "highlight_bg": "#4a1515", "btn_bg": "#2b1111",
+            },
+            "Noir": {
+                "bg_main": "#050505", "bg_secondary": "#111111", "bg_list": "#000000",
+                "accent": "#d0d0d0", "accent_dark": "#777777", "text_primary": "#f2f2f2",
+                "text_secondary": "#b0b0b0", "text_muted": "#707070", "border": "#242424",
+                "border_bright": "#3b3b3b", "highlight_bg": "#202020", "btn_bg": "#111111",
+            },
+            "Blanc et noir": {
+                "bg_main": "#ffffff", "bg_secondary": "#eeeeee", "bg_list": "#fafafa",
+                "accent": "#111111", "accent_dark": "#444444", "text_primary": "#111111",
+                "text_secondary": "#444444", "text_muted": "#777777", "border": "#cccccc",
+                "border_bright": "#999999", "highlight_bg": "#dddddd", "btn_bg": "#eeeeee",
+            },
+        }
+        for name, preset in presets.items():
+            button = QPushButton(f"Preset : {name}")
+            button.clicked.connect(lambda _, values=preset: self._apply_preset(values))
+            btn_row.addWidget(button)
+
         btn_row.addStretch()
         layout.addLayout(btn_row)
         layout.addWidget(scroll)
@@ -463,29 +500,79 @@ class FontsTab(QWidget):
         return dict(self._cfg)
 
 
+class AudioTab(QWidget):
+    output_changed = pyqtSignal(object)
+    progress_style_changed = pyqtSignal(str)
+
+    def __init__(self, devices: list, selected_device=None, progress_style="classic", parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        group = QGroupBox("SORTIE AUDIO")
+        group_layout = QGridLayout(group)
+        group_layout.addWidget(QLabel("Périphérique :"), 0, 0)
+        self.cmb_output = QComboBox()
+        self.cmb_output.addItem("Automatique (5.1 si disponible)", None)
+        for device_id, name, channels in devices:
+            self.cmb_output.addItem(f"{name} ({channels} canaux)", device_id)
+        selected_index = self.cmb_output.findData(selected_device)
+        self.cmb_output.setCurrentIndex(selected_index if selected_index >= 0 else 0)
+        self.cmb_output.currentIndexChanged.connect(self._on_output_changed)
+        group_layout.addWidget(self.cmb_output, 0, 1)
+        group_layout.addWidget(QLabel("Barre de lecture :"), 1, 0)
+        self.cmb_progress = QComboBox()
+        self.cmb_progress.addItem("Classique", "classic")
+        self.cmb_progress.addItem("Intensité selon le temps", "intensity")
+        self.cmb_progress.addItem("Intensité centrée et fine", "intensity_centered")
+        self.cmb_progress.setCurrentIndex(max(0, self.cmb_progress.findData(progress_style)))
+        self.cmb_progress.currentIndexChanged.connect(
+            lambda index: self.progress_style_changed.emit(self.cmb_progress.itemData(index))
+        )
+        group_layout.addWidget(self.cmb_progress, 1, 1)
+        layout.addWidget(group)
+        layout.addStretch()
+
+    def _on_output_changed(self, index: int):
+        self.output_changed.emit(self.cmb_output.itemData(index))
+
+    def get_output_device(self):
+        return self.cmb_output.currentData()
+
+    def get_progress_style(self):
+        return self.cmb_progress.currentData()
+
+
 # ── Panneau Paramètres complet ────────────────────────────────────────────────
 
 class SettingsPanel(QWidget):
-    """Panneau de paramètres avec onglets Raccourcis / Couleurs / Polices."""
+    """Panneau de paramètres avec onglets audio, raccourcis, couleurs et polices."""
 
+    output_changed = pyqtSignal(object)
+    progress_style_changed = pyqtSignal(str)
     shortcuts_changed = pyqtSignal(dict)
     colors_changed    = pyqtSignal(dict)
     font_changed      = pyqtSignal(dict)
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
-                 font_cfg: dict = None, parent=None):
+                 font_cfg: dict = None, output_devices: list = None,
+                 output_device=None, progress_style="classic", parent=None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
         font_cfg  = font_cfg  or dict(DEFAULT_FONT)
 
-        self._setup_ui(shortcuts, colors, font_cfg)
+        self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device, progress_style)
 
-    def _setup_ui(self, shortcuts, colors, font_cfg):
+    def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device, progress_style):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         tabs = QTabWidget()
+
+        self.audio_tab = AudioTab(output_devices, output_device, progress_style)
+        self.audio_tab.output_changed.connect(self.output_changed)
+        self.audio_tab.progress_style_changed.connect(self.progress_style_changed)
+        tabs.addTab(self.audio_tab, "🔉  Audio")
 
         self.shortcuts_tab = ShortcutsTab(shortcuts)
         self.shortcuts_tab.shortcuts_changed.connect(self.shortcuts_changed)
@@ -509,6 +596,12 @@ class SettingsPanel(QWidget):
 
     def get_font_config(self) -> dict:
         return self.fonts_tab.get_font_config()
+
+    def get_output_device(self):
+        return self.audio_tab.get_output_device()
+
+    def get_progress_style(self):
+        return self.audio_tab.get_progress_style()
 
     def apply_all(self, shortcuts: dict, colors: dict, font_cfg: dict):
         """Recharge tout depuis une config sauvegardée."""
@@ -540,6 +633,7 @@ def build_stylesheet(colors: dict, font_cfg: dict) -> str:
     """Génère un QSS complet depuis les couleurs et polices choisies."""
     c = {**DEFAULT_COLORS, **colors}
     f = {**DEFAULT_FONT, **font_cfg}
+    accent_hover = QColor(c['accent']).lighter(115).name()
 
     return f"""
 QWidget {{
@@ -580,7 +674,7 @@ QPushButton#btn_play {{
     min-width: 48px; min-height: 48px;
     max-width: 48px; max-height: 48px;
 }}
-QPushButton#btn_play:hover {{ background-color: {c['accent']}dd; }}
+QPushButton#btn_play:hover {{ background-color: {accent_hover}; }}
 QPushButton#btn_prev, QPushButton#btn_next, QPushButton#btn_stop {{
     background-color: {c['btn_bg']};
     color: {c['accent']};
@@ -650,6 +744,9 @@ QGroupBox::title {{
     background-color: {c['bg_main']};
 }}
 QLabel {{ color: {c['text_primary']}; }}
+QLabel#title_label {{ color: {c['accent']}; }}
+QLabel#sound_label {{ color: {c['text_primary']}; }}
+QLabel#subtitle_label {{ color: {c['text_muted']}; }}
 QLabel#track_title {{ font-size: 17px; font-weight: bold; color: {c['accent']}; }}
 QLabel#track_artist {{ font-size: 13px; color: {c['text_secondary']}; }}
 QLabel#time_label {{

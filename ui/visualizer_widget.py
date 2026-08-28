@@ -36,6 +36,14 @@ class SolarVisualizer(QWidget):
         self._smoothed = np.zeros(N_BANDS, dtype=np.float32)
         self._phase = 0.0
         self._enabled = True
+        self._palette = {
+            "flare": QColor(COL_FLARE),
+            "amber": QColor(COL_AMBER),
+            "orange": QColor(COL_ORANGE),
+            "ember": QColor(COL_EMBER),
+            "background": QColor(0x14, 0x11, 0x0a),
+            "muted": QColor(0x5a, 0x4a, 0x28),
+        }
 
         self.setMinimumHeight(90)
         self.setMaximumHeight(110)
@@ -54,6 +62,16 @@ class SolarVisualizer(QWidget):
         self._timer.setInterval(FPS_INTERVAL_MS)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
+
+    def set_theme_colors(self, colors: dict):
+        """Applique les couleurs configurées au rendu de l'animation."""
+        self._palette["flare"] = QColor(colors.get("text_primary", COL_FLARE.name()))
+        self._palette["amber"] = QColor(colors.get("accent", COL_AMBER.name()))
+        self._palette["orange"] = QColor(colors.get("accent", COL_ORANGE.name()))
+        self._palette["ember"] = QColor(colors.get("accent_dark", COL_EMBER.name()))
+        self._palette["background"] = QColor(colors.get("bg_secondary", "#14110a"))
+        self._palette["muted"] = QColor(colors.get("text_muted", "#5a4a28"))
+        self.update()
 
     # ══════════════════════════════════════════════════════════════
     # Activation / désactivation (bouton perf)
@@ -126,8 +144,10 @@ class SolarVisualizer(QWidget):
         bg_path.addRoundedRect(0.0, 0.0, float(w), float(h), radius, radius)
 
         bg_grad = QLinearGradient(0, 0, 0, h)
-        bg_top = QColor(0x1e, 0x1a, 0x12, 130)
-        bg_bot = QColor(0x14, 0x11, 0x0a, 150)
+        bg_top = QColor(self._palette["background"])
+        bg_top.setAlpha(130)
+        bg_bot = QColor(self._palette["background"])
+        bg_bot.setAlpha(150)
         bg_grad.setColorAt(0.0, bg_top)
         bg_grad.setColorAt(1.0, bg_bot)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -149,8 +169,8 @@ class SolarVisualizer(QWidget):
         # Halo radial qui respire avec les basses
         halo_alpha = int(26 + 90 * min(1.0, bass))
         radial = QRadialGradient(w * 0.5, mid_y, w * 0.55)
-        c1 = QColor(COL_ORANGE); c1.setAlpha(halo_alpha)
-        c2 = QColor(COL_ORANGE); c2.setAlpha(0)
+        c1 = QColor(self._palette["orange"]); c1.setAlpha(halo_alpha)
+        c2 = QColor(self._palette["orange"]); c2.setAlpha(0)
         radial.setColorAt(0.0, c1)
         radial.setColorAt(1.0, c2)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -177,9 +197,9 @@ class SolarVisualizer(QWidget):
         fill_path.closeSubpath()
 
         grad = QLinearGradient(0, mid_y - amp, 0, mid_y + amp * 0.5)
-        c_top = QColor(COL_FLARE); c_top.setAlpha(215)
-        c_mid = QColor(COL_AMBER); c_mid.setAlpha(190)
-        c_bot = QColor(COL_EMBER); c_bot.setAlpha(150)
+        c_top = QColor(self._palette["flare"]); c_top.setAlpha(215)
+        c_mid = QColor(self._palette["amber"]); c_mid.setAlpha(190)
+        c_bot = QColor(self._palette["ember"]); c_bot.setAlpha(150)
         grad.setColorAt(0.0, c_top)
         grad.setColorAt(0.55, c_mid)
         grad.setColorAt(1.0, c_bot)
@@ -188,14 +208,14 @@ class SolarVisualizer(QWidget):
         painter.setBrush(QBrush(grad))
         painter.drawPath(fill_path)
 
-        pen_top = QPen(COL_FLARE, 1.6)
+        pen_top = QPen(self._palette["flare"], 1.6)
         pen_top.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen_top.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen_top)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(top_curve)
 
-        pen_bot = QPen(COL_EMBER, 1.2)
+        pen_bot = QPen(self._palette["ember"], 1.2)
         pen_bot.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen_bot.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen_bot)
@@ -206,10 +226,10 @@ class SolarVisualizer(QWidget):
     def _paint_idle_line(self, painter, w, h):
         """Affichage minimal quand l'animation est désactivée (mode perf)."""
         y = h * 0.62
-        pen = QPen(QColor(0x5a, 0x4a, 0x28), 1.2, Qt.PenStyle.DashLine)
+        pen = QPen(self._palette["muted"], 1.2, Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.drawLine(QPointF(6, y), QPointF(w - 6, y))
-        painter.setPen(QColor(0x5a, 0x4a, 0x28))
+        painter.setPen(self._palette["muted"])
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Animation désactivée")
 
     @staticmethod

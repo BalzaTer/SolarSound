@@ -29,6 +29,7 @@ class PlaylistWidget(QWidget):
         super().__init__(parent)
         self.setAcceptDrops(True)
         self.playlist = playlist
+        self._theme_colors = {}
         self._setup_ui()
         self._connect_signals()
 
@@ -329,16 +330,18 @@ class PlaylistWidget(QWidget):
 
     def set_active_row(self, index: int):
         """Met en évidence le morceau en cours de lecture"""
+        accent = self._theme_colors.get("accent", "#f5a623")
+        text_primary = self._theme_colors.get("text_primary", "#e8d5a0")
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
             if i == index:
-                item.setForeground(QColor("#f5a623"))
+                item.setForeground(QColor(accent))
                 font = item.font()
                 font.setBold(True)
                 item.setFont(font)
                 item.setText("▶ " + item.text().lstrip("▶ "))
             else:
-                item.setForeground(QColor("#e8d5a0"))
+                item.setForeground(QColor(text_primary))
                 font = item.font()
                 font.setBold(False)
                 item.setFont(font)
@@ -347,6 +350,11 @@ class PlaylistWidget(QWidget):
                     item.setText(t[2:])
         if 0 <= index < self.list_widget.count():
             self.list_widget.scrollToItem(self.list_widget.item(index))
+
+    def set_theme_colors(self, colors: dict):
+        self._theme_colors = dict(colors)
+        current_row = self.playlist.current_index
+        self.set_active_row(current_row if 0 <= current_row < self.list_widget.count() else -1)
 
     def _update_count(self):
         n = len(self.playlist)

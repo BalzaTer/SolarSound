@@ -148,9 +148,24 @@ class AudioEngine:
     STATE_PLAYING = "playing"
     STATE_PAUSED  = "paused"
 
+    @staticmethod
+    def output_devices() -> list[tuple[int, str, int]]:
+        """Retourne les sorties disponibles : (ID, nom, canaux max)."""
+        if not SOUNDDEVICE_OK:
+            return []
+        try:
+            return [
+                (index, device["name"], device["max_output_channels"])
+                for index, device in enumerate(sd.query_devices())
+                if device["max_output_channels"] > 0
+            ]
+        except Exception:
+            return []
+
     def __init__(self):
         self.state = self.STATE_STOPPED
         self.config = SpatialConfig()
+        self.output_device: Optional[int] = None
         self.equalizer_config = EqualizerConfig()
         self._eq_states = []
         self._eq_sample_rate = 0
@@ -559,9 +574,14 @@ class AudioEngine:
     def _start_stream(self):
         self._stop_stream()
         try:
-            # Chercher un périphérique 5.1 (6 canaux)
-            dev_id = self._find_51_device()
-            n_out = 6 if dev_id is not None else 2
+            # Le mode automatique privilégie une sortie 5.1.
+            dev_id = (self.output_device if self.output_device is not None
+                      else self._find_51_device())
+            if dev_id is None:
+                n_out = 2
+            else:
+                device_info = sd.query_devices(dev_id)
+                n_out = 6 if device_info["max_output_channels"] >= 6 else 2
 
             self._stream = sd.OutputStream(
                 samplerate=self._sample_rate,
@@ -578,13 +598,9 @@ class AudioEngine:
             self._start_simulation()
 
     def _find_51_device(self) -> Optional[int]:
-        try:
-            devices = sd.query_devices()
-            for i, d in enumerate(devices):
-                if d["max_output_channels"] >= 6:
-                    return i
-        except Exception:
-            pass
+        for index, _name, channels in self.output_devices():
+            if channels >= 6:
+                return index
         return None
 
     def _audio_callback(self, outdata, frames, time_info, status):
@@ -781,6 +797,19 @@ class AudioEngine:
         sensitivity = 1.9
         levels = np.clip(levels * sensitivity * vol_factor, 0.0, 1.0)
         return levels.astype(np.float32)
+
+    def get_timeline_levels(self, count: int = 80) -> np.ndarray:
+        """Retourne l'intensite RMS de segments repartis sur le morceau."""
+        if self._audio_data is None or self._total_frames <= 0:
+            return np.zeros(count, dtype=np.float32)
+        mono = np.mean(np.abs(self._audio_data), axis=1)
+        edges = np.linspace(0, len(mono), count + 1, dtype=int)
+        levels = np.array([
+            np.sqrt(np.mean(np.square(mono[start:end]))) if end > start else 0.0
+            for start, end in zip(edges[:-1], edges[1:])
+        ], dtype=np.float32)
+        peak = max(float(np.max(levels)), 1e-6)
+        return np.clip(levels / peak, 0.0, 1.0)
 
     def set_volume(self, vol: float):
         self.config.master_volume = max(0.0, min(2.0, vol))

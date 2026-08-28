@@ -13,7 +13,9 @@
   ],
   "current_index": 0,
   "play_mode": "SEQUENTIAL",
-  "volume": 79,
+  "volume": 90,
+  "output_device": null,
+  "progress_style": "intensity_centered",
   "spatial_config": {
     "gain_fl": 1.0,
     "gain_fr": 1.0,
@@ -28,7 +30,7 @@
     "mix_to_lfe": true,
     "lfe_low_pass_hz": 80.0,
     "lfe_gain": 0.17,
-    "master_volume": 0.05495408738576254,
+    "master_volume": 0.251188643150958,
     "rotation_enabled": false,
     "rotation_speed": 0.1,
     "rotation_spread": 0.5,
@@ -177,5 +179,6 @@
     "size": 13,
     "mono_family": "Consolas",
     "mono_size": 11
-  }
+  },
+  "visualizer_enabled": true
 }

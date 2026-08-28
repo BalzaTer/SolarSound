@@ -223,6 +223,7 @@ class RotationPanel(QWidget):
         spread_layout.addLayout(spread_row)
 
         hint = QLabel("0 % = 1 enceinte   /   100 % = 3 enceintes")
+        self._rotation_hints = hint
         hint.setStyleSheet("font-size: 10px; color: #5a4a28;")
         spread_layout.addWidget(hint)
 
@@ -247,6 +248,7 @@ class RotationPanel(QWidget):
         angle_layout.addLayout(angle_row)
 
         angle_hint = QLabel("0° = mono   /   180° = opposé (défaut)")
+        self._angle_hint = angle_hint
         angle_hint.setStyleSheet("font-size: 10px; color: #5a4a28;")
         angle_layout.addWidget(angle_hint)
 
@@ -261,6 +263,7 @@ class RotationPanel(QWidget):
             "🔶 La source gauche (orange) tourne en continu autour des 4 enceintes.\n"
             "🔷 La source droite (bleu) reste à l'opposé exact."
         )
+        self._rotation_info = info
         info.setStyleSheet("font-size: 11px; color: #7a6840; line-height: 1.4;")
         info.setWordWrap(True)
         main.addWidget(info)
@@ -270,6 +273,16 @@ class RotationPanel(QWidget):
         self.sld_speed.valueChanged.connect(self._on_speed_changed)
         self.sld_spread.valueChanged.connect(self._on_spread_changed)
         self.sld_angle.valueChanged.connect(self._on_angle_changed)
+
+    def set_theme_colors(self, colors: dict):
+        accent = colors.get("accent", "#f5a623")
+        muted = colors.get("text_muted", "#5a4a28")
+        secondary = colors.get("text_secondary", "#7a6840")
+        for label in (self.lbl_speed, self.lbl_spread, self.lbl_angle):
+            label.setStyleSheet(f"color: {accent}; font-family: Consolas; font-size: 12px;")
+        self._rotation_hints.setStyleSheet(f"font-size: 10px; color: {muted};")
+        self._angle_hint.setStyleSheet(f"font-size: 10px; color: {muted};")
+        self._rotation_info.setStyleSheet(f"font-size: 11px; color: {secondary}; line-height: 1.4;")
 
     # ── Handlers ─────────────────────────────────────────────────────
     def _on_enable_toggled(self, checked: bool):

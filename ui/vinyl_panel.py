@@ -245,6 +245,15 @@ class VinylPanel(QWidget):
 
         main.addWidget(crackle_grp)
 
+    def set_theme_colors(self, colors: dict):
+        accent = colors.get("accent", "#f5a623")
+        for name in ("lbl_speed", "lbl_random", "lbl_wow_amt", "lbl_wow_rate",
+                     "lbl_flutter_amt", "lbl_flutter_rate", "lbl_crackle_density",
+                     "lbl_crackle_amp", "lbl_crackle_dur", "lbl_hiss"):
+            label = getattr(self, name, None)
+            if label is not None:
+                label.setStyleSheet(f"color: {accent}; font-family: Consolas; font-size: 11px;")
+
     def _add_slider(self, layout, label_text, min_v, max_v, val,
                     callback, fmt, attr, lbl):
         row = QHBoxLayout()

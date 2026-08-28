@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
     QApplication
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
-from PyQt6.QtGui import QColor, QPainter, QFont, QKeyEvent
+from PyQt6.QtGui import QColor, QPainter, QFont, QKeyEvent, QIcon, QPixmap
+from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 try:
@@ -51,15 +52,33 @@ class ControlsOverlay(QFrame):
     def __init__(self, icons_dir: str, parent=None):
         super().__init__(parent)
         self._icons_dir = icons_dir
+        self._icon_buttons = []
+        self._accent = "#f5a623"
         self._seeking = False
         self._setup_ui()
 
     def _icon(self, name: str):
-        from PyQt6.QtGui import QIcon
         path = os.path.join(self._icons_dir, name)
-        if os.path.exists(path):
-            return QIcon(path)
+        if name and os.path.isfile(path):
+            pixmap = QPixmap(64, 64)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            QSvgRenderer(path).render(painter)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), QColor(self._accent))
+            painter.end()
+            return QIcon(pixmap)
         return QIcon()
+
+    def set_theme_colors(self, colors: dict):
+        self._accent = colors.get("accent", "#f5a623")
+        for button, icon_name in self._icon_buttons:
+            button.setIcon(self._icon(icon_name))
+        self.sld_progress.setStyleSheet(f"""
+            QSlider::groove:horizontal {{ height: 4px; background: {colors.get('border', '#2a2416')}; border-radius: 2px; }}
+            QSlider::sub-page:horizontal {{ background: {self._accent}; border-radius: 2px; }}
+            QSlider::handle:horizontal {{ background: {self._accent}; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }}
+        """)
 
     def _setup_ui(self):
         self.setStyleSheet("""
@@ -137,6 +156,8 @@ class ControlsOverlay(QFrame):
             b.setToolTip(tooltip)
             b.setFixedSize(32, 32)
             b.clicked.connect(signal)
+            if icon_name:
+                self._icon_buttons.append((b, icon_name))
             return b
 
         self.btn_prev   = btn("preview.svg",    "⏮", "Précédent",         self.prev)

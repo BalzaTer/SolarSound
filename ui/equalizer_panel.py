@@ -77,6 +77,10 @@ class EqualizerGraph(QWidget):
         self.gains = list(gains)
         self.update()
 
+    def set_theme_colors(self, colors: dict):
+        self._theme_colors = colors
+        self.update()
+
     def _plot_rect(self):
         return self.rect().adjusted(44, 18, -20, -34)
 
@@ -98,8 +102,9 @@ class EqualizerGraph(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         rect = self._plot_rect()
-        painter.fillRect(self.rect(), QColor("#0c0a07"))
-        painter.setPen(QPen(QColor("#3d3420"), 1))
+        colors = getattr(self, "_theme_colors", {})
+        painter.fillRect(self.rect(), QColor(colors.get("bg_list", "#0c0a07")))
+        painter.setPen(QPen(QColor(colors.get("border_bright", "#3d3420")), 1))
         for gain in (-12, -6, 0, 6, 12):
             y = self._y(gain)
             painter.drawLine(rect.left(), int(y), rect.right(), int(y))
@@ -108,7 +113,7 @@ class EqualizerGraph(QWidget):
             x = self._x(frequency)
             painter.drawLine(int(x), rect.top(), int(x), rect.bottom())
             painter.drawText(int(x - 15), self.height() - 10, f"{frequency:g}")
-        painter.setPen(QPen(QColor("#f5a623"), 3))
+        painter.setPen(QPen(QColor(colors.get("accent", "#f5a623")), 3))
         path = QPainterPath()
         for index, frequency in enumerate(self.frequencies):
             point = QPointF(self._x(frequency), self._y(self.gains[index]))
@@ -119,8 +124,8 @@ class EqualizerGraph(QWidget):
                 midpoint = (previous.x() + point.x()) / 2
                 path.cubicTo(midpoint, previous.y(), midpoint, point.y(), point.x(), point.y())
         painter.drawPath(path)
-        painter.setBrush(QBrush(QColor("#f5a623")))
-        painter.setPen(QPen(QColor("#0f0d0a"), 2))
+        painter.setBrush(QBrush(QColor(colors.get("accent", "#f5a623"))))
+        painter.setPen(QPen(QColor(colors.get("bg_main", "#0f0d0a")), 2))
         for index, frequency in enumerate(self.frequencies):
             painter.drawEllipse(QPointF(self._x(frequency), self._y(self.gains[index])), 6, 6)
 
@@ -240,6 +245,9 @@ class EqualizerPanel(QWidget):
         self._load_points(self.config["frequencies"], self.config["gains"])
         if self.config["mode"] == "free":
             self.graph.set_points(self.config["free_frequencies"], self.config["free_gains"])
+
+    def set_theme_colors(self, colors: dict):
+        self.graph.set_theme_colors(colors)
 
     def _load_points(self, frequencies, gains):
         self._sliders.clear()

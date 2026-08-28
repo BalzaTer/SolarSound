@@ -115,6 +115,7 @@ class SpatialPanel(QWidget):
         # Disposition 5.1 : chaque canal sur sa propre ligne
         # Groupe Avant
         lbl_front = QLabel("— AVANT —")
+        self._lbl_front = lbl_front
         lbl_front.setStyleSheet("color: #5a4a28; font-size: 10px; letter-spacing: 3px;")
         lbl_front.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ch_layout.addWidget(lbl_front)
@@ -128,6 +129,7 @@ class SpatialPanel(QWidget):
 
         # Séparateur
         lbl_surr = QLabel("— SURROUND + LFE —")
+        self._lbl_surr = lbl_surr
         lbl_surr.setStyleSheet("color: #5a4a28; font-size: 10px; letter-spacing: 3px; margin-top: 4px;")
         lbl_surr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ch_layout.addWidget(lbl_surr)
@@ -141,6 +143,7 @@ class SpatialPanel(QWidget):
 
         # Légende
         legend = QLabel("0.0 = muet  ·  1.0 = normal  ·  2.0 = amplifié")
+        self._legend = legend
         legend.setStyleSheet("font-size: 10px; color: #3d3420;")
         legend.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ch_layout.addWidget(legend)
@@ -241,6 +244,7 @@ class SpatialPanel(QWidget):
         stereo_layout.addLayout(sep_row)
 
         hint = QLabel("0° = mono   ·   180° = stéréo complet")
+        self._stereo_hint = hint
         hint.setStyleSheet("font-size: 10px; color: #5a4a28;")
         stereo_layout.addWidget(hint)
 
@@ -259,6 +263,18 @@ class SpatialPanel(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll)
+
+    def set_theme_colors(self, colors: dict):
+        accent = colors.get("accent", "#f5a623")
+        muted = colors.get("text_muted", "#5a4a28")
+        border = colors.get("border_bright", "#3d3420")
+        secondary = colors.get("text_secondary", "#a08060")
+        for label in (self.lbl_blend, self.lbl_phase, self.lbl_lfe_gain, self.lbl_stereo_sep):
+            label.setStyleSheet(f"color: {accent}; font-family: Consolas;")
+        self._lbl_front.setStyleSheet(f"color: {muted}; font-size: 10px; letter-spacing: 3px;")
+        self._lbl_surr.setStyleSheet(f"color: {muted}; font-size: 10px; letter-spacing: 3px; margin-top: 4px;")
+        self._legend.setStyleSheet(f"font-size: 10px; color: {border};")
+        self._stereo_hint.setStyleSheet(f"font-size: 10px; color: {muted};")
 
     def _connect_signals(self):
         self.ch_fl.value_changed.connect(lambda v: self._update("gain_fl", v))
