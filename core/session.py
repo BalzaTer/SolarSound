@@ -45,6 +45,7 @@ class SessionState:
     playlist_path: str = ""      # Dernière playlist chargée (si sauvegardée)
     playlist_tracks: list = None # Chemins des pistes en mémoire
     current_index: int = 0
+    player_position: float = 0.0 # Position de lecture (secondes) de la piste courante
     play_mode: str = "SEQUENTIAL"
     current_tab: int = 1
 
@@ -99,6 +100,7 @@ class SessionManager:
                 "window": asdict(state.window),
                 "playlist_tracks": state.playlist_tracks,
                 "current_index": state.current_index,
+                "player_position": getattr(state, "player_position", 0.0),
                 "play_mode": state.play_mode,
                 "current_tab": state.current_tab,
                 "volume": state.volume,
@@ -136,6 +138,7 @@ class SessionManager:
             )
             state.playlist_tracks = data.get("playlist_tracks", [])
             state.current_index   = data.get("current_index", 0)
+            state.player_position = data.get("player_position", 0.0)
             state.play_mode       = data.get("play_mode", "SEQUENTIAL")
             state.current_tab     = data.get("current_tab", 1)
             state.volume          = data.get("volume", 100)

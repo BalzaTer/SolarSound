@@ -115,17 +115,12 @@ class KeyCaptureEdit(QLineEdit):
         super().__init__(parent)
         self._capturing = False
         self.setReadOnly(True)
+        self.setObjectName("shortcut_edit")
+        self.setMinimumWidth(190)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFont(QFont("Segoe UI", 11))
         self.setPlaceholderText("Cliquer pour changer…")
         self.mousePressEvent = self._start_capture
-        self.setStyleSheet("""
-            QLineEdit {
-                background: #1e1a12; border: 1px solid #3d3420;
-                color: #e8d5a0; padding: 4px 8px; border-radius: 4px;
-            }
-            QLineEdit:focus {
-                border-color: #f5a623; background: #2a2008; color: #f5a623;
-            }
-        """)
 
     def _start_capture(self, event):
         self._capturing = True
@@ -845,4 +840,13 @@ QLineEdit {{
     border-radius: 4px; color: {c['text_primary']}; padding: 4px 8px;
 }}
 QLineEdit:focus {{ border-color: {c['accent']}; }}
+QLineEdit#shortcut_edit {{
+    background-color: {c['btn_bg']}; border: 1px solid {c['border_bright']};
+    color: {c['text_primary']}; padding: 4px 8px; border-radius: 4px;
+    font-family: 'Segoe UI', 'Arial', sans-serif; font-size: 12px;
+}}
+QLineEdit#shortcut_edit:focus {{
+    border-color: {c['accent']}; background-color: {c['highlight_bg']};
+    color: {c['accent']};
+}}
 """

@@ -13,10 +13,12 @@ try:
     from ..core.playlist import Playlist, Track, PlayMode
     from ..audio.metadata import read_metadata, format_duration
     from ..audio.cd import CdAudio, make_cd_uri
+    from ..core.custom_playlist import MoodEnum
 except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, Track, PlayMode
     from audio.metadata import read_metadata, format_duration
     from audio.cd import CdAudio, make_cd_uri
+    from core.custom_playlist import MoodEnum
 
 
 class PlaylistWidget(QWidget):
@@ -24,6 +26,8 @@ class PlaylistWidget(QWidget):
 
     track_activated = pyqtSignal(int)   # index du morceau à jouer
     playlist_changed = pyqtSignal()
+    mood_selected = pyqtSignal(str)      # nom de l'humeur cliquée (génère un Flow)
+    open_playlist_manager = pyqtSignal()  # demande de bascule vers l'onglet "Mes Playlists"
 
     def __init__(self, playlist: Playlist, parent=None):
         super().__init__(parent)
@@ -66,18 +70,9 @@ class PlaylistWidget(QWidget):
 
         layout.addLayout(toolbar)
 
-        # ── Barre playlist (save / load) ──────────────────────────────
+        # ── Barre d'infos (nombre de morceaux / durée totale) ──────────
         playlist_bar = QHBoxLayout()
         playlist_bar.setSpacing(4)
-
-        self.btn_save_pl = QPushButton("💾 Enregistrer")
-        self.btn_save_pl.setToolTip("Enregistrer la liste (.playlist)")
-        playlist_bar.addWidget(self.btn_save_pl)
-
-        self.btn_load_pl = QPushButton("📂 Ouvrir")
-        self.btn_load_pl.setToolTip("Charger une liste (.playlist)")
-        playlist_bar.addWidget(self.btn_load_pl)
-
         playlist_bar.addStretch()
 
         self.lbl_count = QLabel("0 morceaux")
@@ -85,6 +80,36 @@ class PlaylistWidget(QWidget):
         playlist_bar.addWidget(self.lbl_count)
 
         layout.addLayout(playlist_bar)
+
+        # ── Barre humeurs (accès rapide au Flow des playlists persos) ──
+        mood_bar = QHBoxLayout()
+        mood_bar.setSpacing(4)
+
+        mood_icons = {
+            MoodEnum.TRISTE.value: "😢",
+            MoodEnum.MOTIVATION.value: "💪",
+            MoodEnum.FOCUS.value: "🎯",
+            MoodEnum.CHILL.value: "😌",
+            MoodEnum.SOIREE.value: "🎉",
+            MoodEnum.FLOW.value: "🌊",
+        }
+        self.mood_buttons = {}
+        for mood in MoodEnum.get_all_moods():
+            icon = mood_icons.get(mood, "")
+            btn = QPushButton(f"{icon} {mood}")
+            btn.setToolTip(f"Générer un mix \"{mood}\" à partir de vos playlists persos")
+            btn.clicked.connect(lambda _checked, m=mood: self.mood_selected.emit(m))
+            mood_bar.addWidget(btn)
+            self.mood_buttons[mood] = btn
+
+        mood_bar.addStretch()
+
+        self.btn_open_playlist_manager = QPushButton("💾 Mes Playlists →")
+        self.btn_open_playlist_manager.setToolTip("Gérer vos playlists personnalisées")
+        self.btn_open_playlist_manager.clicked.connect(self.open_playlist_manager.emit)
+        mood_bar.addWidget(self.btn_open_playlist_manager)
+
+        layout.addLayout(mood_bar)
 
         # ── Liste ─────────────────────────────────────────────────────
         self.list_widget = QListWidget()
@@ -100,8 +125,6 @@ class PlaylistWidget(QWidget):
         self.btn_add_cd.clicked.connect(self._on_add_cd)
         self.btn_remove.clicked.connect(self._on_remove)
         self.btn_clear.clicked.connect(self._on_clear)
-        self.btn_save_pl.clicked.connect(self._on_save_playlist)
-        self.btn_load_pl.clicked.connect(self._on_load_playlist)
         self.list_widget.itemDoubleClicked.connect(self._on_double_click)
         self.list_widget.customContextMenuRequested.connect(self._show_context_menu)
 

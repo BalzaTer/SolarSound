@@ -21,6 +21,7 @@ try:
     from ..video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
     from .theme import STYLESHEET
     from .playlist_widget import PlaylistWidget
+    from .playlist_manager_panel import PlaylistManagerPanel
     from .spatial_panel import SpatialPanel
     from .rotation_panel import RotationPanel
     from .vinyl_panel import VinylPanel
@@ -29,6 +30,7 @@ try:
     from .progress_widget import ClickableProgressSlider, IntensityProgressBar
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
+    from ..core.playlist_manager import PlaylistManager
     from ..audio.engine import AudioEngine, SpatialConfig
     from ..audio.cd import parse_cd_uri
     from ..audio.metadata import format_duration, read_metadata, read_cover_art_data
@@ -48,6 +50,7 @@ except (ImportError, ModuleNotFoundError):
     from video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
     from ui.theme import STYLESHEET
     from ui.playlist_widget import PlaylistWidget
+    from ui.playlist_manager_panel import PlaylistManagerPanel
     from ui.spatial_panel import SpatialPanel
     from ui.rotation_panel import RotationPanel
     from ui.vinyl_panel import VinylPanel
@@ -55,6 +58,7 @@ except (ImportError, ModuleNotFoundError):
     from ui.progress_widget import ClickableProgressSlider, IntensityProgressBar
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
+    from core.playlist_manager import PlaylistManager
     from audio.engine import AudioEngine, SpatialConfig
     from ui.equalizer_panel import EqualizerPanel
     from audio.cd import parse_cd_uri
@@ -145,6 +149,17 @@ class MainWindow(QMainWindow):
         self._seeking = False
         self._last_position = 0.0
         self._session = SessionManager()
+
+        # Playlists personnalisées avec humeurs (Mes Playlists)
+        self.playlist_manager = PlaylistManager()
+        self.playlist_manager.load_all()
+
+        # Sauvegarde périodique de la position de lecture (indépendante du
+        # debounce déclenché par les changements ponctuels d'état)
+        self._position_save_timer = QTimer(self)
+        self._position_save_timer.setInterval(10000)
+        self._position_save_timer.timeout.connect(self._schedule_save)
+        self._position_save_timer.start()
 
         # Géométrie normale (hors minimisé) — mise à jour via changeEvent/moveEvent/resizeEvent
         self._normal_geometry = None
@@ -371,6 +386,7 @@ class MainWindow(QMainWindow):
             window=win,
             playlist_tracks=tracks,
             current_index=max(0, self.playlist.current_index),
+            player_position=self.engine.position_seconds if self._media_mode == 'audio' else 0.0,
             play_mode=self.playlist.play_mode.name,
             current_tab=self._tabs.currentIndex(),
             volume=self.sld_volume.value(),
@@ -461,8 +477,28 @@ class MainWindow(QMainWindow):
             if valid_paths:
                 self.playlist_widget._add_files(valid_paths)
                 idx = min(state.current_index, len(self.playlist.tracks) - 1)
-                self.playlist.set_current(idx)
+                track = self.playlist.set_current(idx)
                 self.playlist_widget.set_active_row(idx)
+
+                # Recharger la piste courante (sans lancer la lecture) et
+                # reprendre à la même position qu'à la fermeture.
+                if track and not self._is_video(track.path):
+                    self._current_track = track
+                    self._current_media_path = track.path
+                    if self.engine.load(track.path):
+                        pos = max(0.0, min(
+                            getattr(state, "player_position", 0.0),
+                            self.engine.duration_seconds,
+                        ))
+                        self.engine.seek(pos)
+                        self.intensity_progress.set_levels(self.engine.get_timeline_levels(240))
+                        self._update_track_display(track)
+                        dur = self.engine.duration_seconds
+                        self.lbl_dur.setText(format_duration(dur))
+                        self.lbl_pos.setText(format_duration(pos))
+                        if dur > 0:
+                            self.sld_progress.setValue(int(pos / dur * 1000))
+                        self.status_bar.showMessage(f"Reprise : {track.title}")
 
         # ── Animation du visualiseur ────────────────────────────────
         enabled = getattr(state, "visualizer_enabled", True)
@@ -846,6 +882,8 @@ class MainWindow(QMainWindow):
         self.playlist_widget = PlaylistWidget(self.playlist)
         self.playlist_widget.track_activated.connect(self._on_track_activated)
         self.playlist_widget.playlist_changed.connect(self._on_playlist_changed)
+        self.playlist_widget.mood_selected.connect(self._on_mood_selected)
+        self.playlist_widget.open_playlist_manager.connect(self._on_open_playlist_manager)
         tabs.addTab(self.playlist_widget, "📋  Playlist")
 
         # ── Lecteur Vidéo (prioritaire, premier onglet clé) ───────────
@@ -854,6 +892,12 @@ class MainWindow(QMainWindow):
         self.video_window.request_next.connect(self._on_next)
         self.video_window.request_stop.connect(self._on_stop)
         tabs.addTab(self.video_window, "🎬  Vidéo")
+
+        # ── Mes Playlists (playlists personnalisées avec humeurs) ─────
+        self.playlist_manager_panel = PlaylistManagerPanel(self.playlist_manager)
+        self.playlist_manager_panel.load_requested.connect(self._on_load_custom_playlist)
+        self._playlists_tab_index = 2
+        tabs.insertTab(self._playlists_tab_index, self.playlist_manager_panel, "💾  Mes Playlists")
 
         # ── Spatialisation ────────────────────────────────────────────
         self.spatial_panel = SpatialPanel(self.engine.config)
@@ -1091,6 +1135,49 @@ class MainWindow(QMainWindow):
         track = self.playlist.set_current(index)
         if track:
             self._load_and_play(track, index)
+
+    # ── Playlists personnalisées / humeurs ─────────────────────────────
+    def _on_mood_selected(self, mood: str):
+        """Génère un mix Flow pour l'humeur choisie et lance la lecture."""
+        tracks = self.playlist_manager.generate_flow([mood])
+        if not tracks:
+            QMessageBox.information(
+                self, "Mix indisponible",
+                f'Aucune piste trouvée pour l\'humeur "{mood}".\n'
+                "Ajoutez des pistes à une playlist personnalisée avec cette humeur "
+                "depuis l'onglet \"Mes Playlists\"."
+            )
+            return
+        self._load_custom_tracks_into_playlist(tracks, mode="replace")
+        self.status_bar.showMessage(f'Mix "{mood}" généré ({len(tracks)} pistes)')
+
+    def _on_open_playlist_manager(self):
+        """Bascule vers l'onglet \"Mes Playlists\"."""
+        self._tabs.setCurrentIndex(self._playlists_tab_index)
+
+    def _on_load_custom_playlist(self, playlist_id: str, action: str):
+        """Charge (remplace) ou ajoute une playlist personnalisée à la liste de lecture."""
+        playlist = self.playlist_manager.get_playlist(playlist_id)
+        if not playlist or not playlist.tracks:
+            return
+        self._load_custom_tracks_into_playlist(list(playlist.tracks), mode=action)
+        self._tabs.setCurrentIndex(0)
+        self.status_bar.showMessage(f'Playlist "{playlist.name}" chargée')
+
+    def _load_custom_tracks_into_playlist(self, tracks, mode: str):
+        """Remplace ou ajoute des CustomTrack à la liste de lecture principale."""
+        if mode == "replace":
+            self.playlist.clear()
+            self.playlist_widget.list_widget.clear()
+        for track in tracks:
+            self.playlist.add_track(track)
+            self.playlist_widget._add_list_item(track)
+        self.playlist_widget._update_count()
+        self.playlist_widget.playlist_changed.emit()
+        if mode == "replace" and self.playlist.tracks:
+            first_track = self.playlist.set_current(0)
+            if first_track:
+                self._load_and_play(first_track, 0)
 
     def _is_video(self, path: str) -> bool:
         return any(path.lower().endswith(ext) for ext in SUPPORTED_VIDEO_FORMATS)
