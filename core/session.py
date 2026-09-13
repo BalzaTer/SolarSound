@@ -48,6 +48,7 @@ class SessionState:
     player_position: float = 0.0 # Position de lecture (secondes) de la piste courante
     play_mode: str = "SEQUENTIAL"
     current_tab: int = 1
+    library_folders: list = None  # Dossiers de musique locaux (recherche + retrouver pistes déplacées)
 
     # Audio
     volume: int = 100
@@ -103,6 +104,7 @@ class SessionManager:
                 "player_position": getattr(state, "player_position", 0.0),
                 "play_mode": state.play_mode,
                 "current_tab": state.current_tab,
+                "library_folders": getattr(state, "library_folders", []) or [],
                 "volume": state.volume,
                 "output_device": state.output_device,
                 "progress_style": state.progress_style,
@@ -141,6 +143,7 @@ class SessionManager:
             state.player_position = data.get("player_position", 0.0)
             state.play_mode       = data.get("play_mode", "SEQUENTIAL")
             state.current_tab     = data.get("current_tab", 1)
+            state.library_folders = data.get("library_folders", []) or []
             state.volume          = data.get("volume", 100)
             state.output_device    = data.get("output_device")
             state.progress_style   = data.get("progress_style", "classic")

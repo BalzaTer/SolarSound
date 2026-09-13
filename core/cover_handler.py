@@ -27,6 +27,10 @@ class CoverHandler:
         """
         self.app_data_dir = app_data_dir
         self.covers_dir = os.path.join(app_data_dir, self.COVERS_DIRNAME)
+        self.pil_available = Image is not None
+        if not self.pil_available:
+            print("[CoverHandler] PIL (Pillow) non installé : les covers ne pourront pas être enregistrées. "
+                  "Installez-le avec : pip install Pillow")
         self._ensure_covers_dir()
 
     def _ensure_covers_dir(self):
@@ -126,6 +130,28 @@ class CoverHandler:
             return None
         except Exception as e:
             print(f"[CoverHandler] Erreur chargement pixmap: {e}")
+            return None
+
+    def duplicate_cover(self, source_cover_name: str, dest_cover_name: str) -> Optional[str]:
+        """
+        Duplique un fichier cover existant sous un nouveau nom (pour dupliquer une playlist).
+
+        Args:
+            source_cover_name: Nom du fichier cover source
+            dest_cover_name: Nom du fichier cover à créer
+
+        Returns:
+            Nom du fichier créé, ou None si la source n'existe pas / erreur
+        """
+        try:
+            src = os.path.join(self.covers_dir, source_cover_name)
+            if not os.path.exists(src):
+                return None
+            dst = os.path.join(self.covers_dir, dest_cover_name)
+            shutil.copyfile(src, dst)
+            return dest_cover_name
+        except Exception as e:
+            print(f"[CoverHandler] Erreur duplication cover: {e}")
             return None
 
     def delete_cover(self, cover_name: str) -> bool:

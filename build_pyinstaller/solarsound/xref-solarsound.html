@@ -366,6 +366,50 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="..audio.cd_metadata.cache_cover_for_drive"></a>
+  <a target="code" href="" type="text/plain"><tt>..audio.cd_metadata.cache_cover_for_drive</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.playlist_widget">ui.playlist_widget</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="..audio.cd_metadata.fetch_cover_art"></a>
+  <a target="code" href="" type="text/plain"><tt>..audio.cd_metadata.fetch_cover_art</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.playlist_widget">ui.playlist_widget</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="..audio.cd_metadata.fetch_release_by_toc"></a>
+  <a target="code" href="" type="text/plain"><tt>..audio.cd_metadata.fetch_release_by_toc</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.playlist_widget">ui.playlist_widget</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="..audio.cd_metadata.get_cached_cover_for_drive"></a>
+  <a target="code" href="" type="text/plain"><tt>..audio.cd_metadata.get_cached_cover_for_drive</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="..audio.engine.AudioEngine"></a>
   <a target="code" href="" type="text/plain"><tt>..audio.engine.AudioEngine</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
@@ -420,8 +464,20 @@ imported by:
   <a target="code" href="" type="text/plain"><tt>..audio.metadata.read_metadata</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
 imported by:
-    <a href="#ui.main_window">ui.main_window</a>
+    <a href="#core.library_scanner">core.library_scanner</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="..audio.preview_player.PreviewPlayer"></a>
+  <a target="code" href="" type="text/plain"><tt>..audio.preview_player.PreviewPlayer</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
 
   </div>
 
@@ -453,6 +509,17 @@ imported by:
 <div class="node">
   <a name="..core.error_logging.append_error_log"></a>
   <a target="code" href="" type="text/plain"><tt>..core.error_logging.append_error_log</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="..core.library_scanner.scan_library_folders"></a>
+  <a target="code" href="" type="text/plain"><tt>..core.library_scanner.scan_library_folders</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
 imported by:
     <a href="#ui.main_window">ui.main_window</a>
@@ -2981,6 +3048,7 @@ imported by:
  &#8226;   <a href="#ui.playlist_dialogs">ui.playlist_dialogs</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+ &#8226;   <a href="#ui.progress_dialog">ui.progress_dialog</a>
  &#8226;   <a href="#ui.progress_widget">ui.progress_widget</a>
  &#8226;   <a href="#ui.rotation_panel">ui.rotation_panel</a>
  &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
@@ -3166,6 +3234,7 @@ imported by:
  &#8226;   <a href="#ui.playlist_dialogs">ui.playlist_dialogs</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+ &#8226;   <a href="#ui.progress_dialog">ui.progress_dialog</a>
  &#8226;   <a href="#ui.progress_widget">ui.progress_widget</a>
  &#8226;   <a href="#ui.rotation_panel">ui.rotation_panel</a>
  &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
@@ -5787,8 +5856,10 @@ imported by:
 imported by:
     <a href="#audio.audio_analysis">audio.audio_analysis</a>
  &#8226;   <a href="#audio.cd">audio.cd</a>
+ &#8226;   <a href="#audio.cd_metadata">audio.cd_metadata</a>
  &#8226;   <a href="#audio.engine">audio.engine</a>
  &#8226;   <a href="#audio.metadata">audio.metadata</a>
+ &#8226;   <a href="#audio.preview_player">audio.preview_player</a>
  &#8226;   <a href="#audio.vinyl">audio.vinyl</a>
 
   </div>
@@ -5841,6 +5912,27 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="audio.cd_metadata"></a>
+  <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/audio/cd_metadata.py" type="text/plain"><tt>audio.cd_metadata</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#audio">audio</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#typing">typing</a>
+ &#8226;   <a href="#urllib.parse">urllib.parse</a>
+ &#8226;   <a href="#urllib.request">urllib.request</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="audio.engine"></a>
   <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/audio/engine.py" type="text/plain"><tt>audio.engine</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -5861,7 +5953,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#ui.main_window">ui.main_window</a>
+    <a href="#audio.preview_player">audio.preview_player</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.rotation_panel">ui.rotation_panel</a>
  &#8226;   <a href="#ui.spatial_panel">ui.spatial_panel</a>
 
@@ -5885,11 +5978,31 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#core.playlist_manager">core.playlist_manager</a>
+    <a href="#core.library_scanner">core.library_scanner</a>
+ &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
  &#8226;   <a href="#ui.video_window">ui.video_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="audio.preview_player"></a>
+  <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/audio/preview_player.py" type="text/plain"><tt>audio.preview_player</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#audio">audio</a>
+ &#8226;   <a href="#audio.engine">audio.engine</a>
+ &#8226;   <a href="#numpy">numpy</a>
+ &#8226;   <a href="#sounddevice">sounddevice</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
 
   </div>
 
@@ -6880,6 +6993,7 @@ imported by:
     <a href="#core.cover_handler">core.cover_handler</a>
  &#8226;   <a href="#core.custom_playlist">core.custom_playlist</a>
  &#8226;   <a href="#core.error_logging">core.error_logging</a>
+ &#8226;   <a href="#core.library_scanner">core.library_scanner</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.qt_config">core.qt_config</a>
@@ -6963,6 +7077,28 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="core.library_scanner"></a>
+  <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/core/library_scanner.py" type="text/plain"><tt>core.library_scanner</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#..audio.metadata.read_metadata">..audio.metadata.read_metadata</a>
+ &#8226;   <a href="#audio.metadata">audio.metadata</a>
+ &#8226;   <a href="#core">core</a>
+ &#8226;   <a href="#core.playlist">core.playlist</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#core.playlist_manager">core.playlist_manager</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="core.playlist"></a>
   <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/core/playlist.py" type="text/plain"><tt>core.playlist</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -6979,6 +7115,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#core.custom_playlist">core.custom_playlist</a>
+ &#8226;   <a href="#core.library_scanner">core.library_scanner</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
@@ -6997,12 +7134,14 @@ imports:
  &#8226;   <a href="#core">core</a>
  &#8226;   <a href="#core.cover_handler">core.cover_handler</a>
  &#8226;   <a href="#core.custom_playlist">core.custom_playlist</a>
+ &#8226;   <a href="#core.library_scanner">core.library_scanner</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#cover_handler">cover_handler</a>
  &#8226;   <a href="#custom_playlist">custom_playlist</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#shutil">shutil</a>
  &#8226;   <a href="#sys">sys</a>
  &#8226;   <a href="#typing">typing</a>
 
@@ -7390,6 +7529,7 @@ imported by:
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#mutagen.mp4">mutagen.mp4</a>
  &#8226;   <a href="#numpy.ma.core">numpy.ma.core</a>
+ &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
  &#8226;   <a href="#xmlrpc.client">xmlrpc.client</a>
 
   </div>
@@ -11999,7 +12139,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#core.error_logging">core.error_logging</a>
+    <a href="#audio.cd_metadata">audio.cd_metadata</a>
+ &#8226;   <a href="#core.error_logging">core.error_logging</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.session">core.session</a>
@@ -14615,6 +14756,7 @@ imports:
 imported by:
     <a href="#audio.cd">audio.cd</a>
  &#8226;   <a href="#audio.engine">audio.engine</a>
+ &#8226;   <a href="#audio.preview_player">audio.preview_player</a>
  &#8226;   <a href="#audio.vinyl">audio.vinyl</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#numpy">numpy</a>
@@ -20778,6 +20920,7 @@ imported by:
  &#8226;   <a href="#core.cover_handler">core.cover_handler</a>
  &#8226;   <a href="#core.custom_playlist">core.custom_playlist</a>
  &#8226;   <a href="#core.error_logging">core.error_logging</a>
+ &#8226;   <a href="#core.library_scanner">core.library_scanner</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.qt_config">core.qt_config</a>
@@ -21493,6 +21636,7 @@ imported by:
  &#8226;   <a href="#secrets">secrets</a>
  &#8226;   <a href="#statistics">statistics</a>
  &#8226;   <a href="#tempfile">tempfile</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#uuid">uuid</a>
 
   </div>
@@ -21930,6 +22074,7 @@ imported by:
  &#8226;   <a href="#PIL.ImageShow">PIL.ImageShow</a>
  &#8226;   <a href="#argparse">argparse</a>
  &#8226;   <a href="#core.cover_handler">core.cover_handler</a>
+ &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#multiprocessing.util">multiprocessing.util</a>
@@ -22068,6 +22213,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#audio.engine">audio.engine</a>
+ &#8226;   <a href="#audio.preview_player">audio.preview_player</a>
  &#8226;   <a href="#main.py">main.py</a>
 
   </div>
@@ -23218,12 +23364,14 @@ imported by:
  &#8226;   <a href="#annotationlib">annotationlib</a>
  &#8226;   <a href="#audio.audio_analysis">audio.audio_analysis</a>
  &#8226;   <a href="#audio.cd">audio.cd</a>
+ &#8226;   <a href="#audio.cd_metadata">audio.cd_metadata</a>
  &#8226;   <a href="#audio.engine">audio.engine</a>
  &#8226;   <a href="#audio.metadata">audio.metadata</a>
  &#8226;   <a href="#copyreg">copyreg</a>
  &#8226;   <a href="#core.cover_handler">core.cover_handler</a>
  &#8226;   <a href="#core.custom_playlist">core.custom_playlist</a>
  &#8226;   <a href="#core.error_logging">core.error_logging</a>
+ &#8226;   <a href="#core.library_scanner">core.library_scanner</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.session">core.session</a>
@@ -23312,6 +23460,7 @@ imported by:
  &#8226;   <a href="#ui.playlist_dialogs">ui.playlist_dialogs</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+ &#8226;   <a href="#ui.progress_dialog">ui.progress_dialog</a>
  &#8226;   <a href="#ui.progress_widget">ui.progress_widget</a>
  &#8226;   <a href="#ui.rotation_panel">ui.rotation_panel</a>
  &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
@@ -23353,12 +23502,15 @@ imported by:
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#..audio.cd.parse_cd_uri">..audio.cd.parse_cd_uri</a>
+ &#8226;   <a href="#..audio.cd_metadata.get_cached_cover_for_drive">..audio.cd_metadata.get_cached_cover_for_drive</a>
  &#8226;   <a href="#..audio.engine.AudioEngine">..audio.engine.AudioEngine</a>
  &#8226;   <a href="#..audio.engine.SpatialConfig">..audio.engine.SpatialConfig</a>
  &#8226;   <a href="#..audio.metadata.format_duration">..audio.metadata.format_duration</a>
  &#8226;   <a href="#..audio.metadata.read_cover_art_data">..audio.metadata.read_cover_art_data</a>
  &#8226;   <a href="#..audio.metadata.read_metadata">..audio.metadata.read_metadata</a>
+ &#8226;   <a href="#..audio.preview_player.PreviewPlayer">..audio.preview_player.PreviewPlayer</a>
  &#8226;   <a href="#..core.error_logging.append_error_log">..core.error_logging.append_error_log</a>
+ &#8226;   <a href="#..core.library_scanner.scan_library_folders">..core.library_scanner.scan_library_folders</a>
  &#8226;   <a href="#..core.playlist.PlayMode">..core.playlist.PlayMode</a>
  &#8226;   <a href="#..core.playlist.Playlist">..core.playlist.Playlist</a>
  &#8226;   <a href="#..core.playlist.Track">..core.playlist.Track</a>
@@ -23375,20 +23527,25 @@ imports:
  &#8226;   <a href="#PyQt6.QtSvg">PyQt6.QtSvg</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#audio.cd">audio.cd</a>
+ &#8226;   <a href="#audio.cd_metadata">audio.cd_metadata</a>
  &#8226;   <a href="#audio.engine">audio.engine</a>
  &#8226;   <a href="#audio.metadata">audio.metadata</a>
+ &#8226;   <a href="#audio.preview_player">audio.preview_player</a>
  &#8226;   <a href="#core.error_logging">core.error_logging</a>
+ &#8226;   <a href="#core.library_scanner">core.library_scanner</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.session">core.session</a>
  &#8226;   <a href="#core.volume">core.volume</a>
  &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#random">random</a>
  &#8226;   <a href="#sys">sys</a>
  &#8226;   <a href="#typing">typing</a>
  &#8226;   <a href="#ui">ui</a>
  &#8226;   <a href="#ui.equalizer_panel">ui.equalizer_panel</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
  &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+ &#8226;   <a href="#ui.progress_dialog">ui.progress_dialog</a>
  &#8226;   <a href="#ui.progress_widget">ui.progress_widget</a>
  &#8226;   <a href="#ui.rotation_panel">ui.rotation_panel</a>
  &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
@@ -23443,9 +23600,11 @@ imports:
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#audio.metadata">audio.metadata</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
+ &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#ui">ui</a>
  &#8226;   <a href="#ui.playlist_dialogs">ui.playlist_dialogs</a>
+ &#8226;   <a href="#ui.progress_dialog">ui.progress_dialog</a>
 
   </div>
   <div class="import">
@@ -23463,6 +23622,9 @@ imported by:
 imports:
     <a href="#..audio.cd.CdAudio">..audio.cd.CdAudio</a>
  &#8226;   <a href="#..audio.cd.make_cd_uri">..audio.cd.make_cd_uri</a>
+ &#8226;   <a href="#..audio.cd_metadata.cache_cover_for_drive">..audio.cd_metadata.cache_cover_for_drive</a>
+ &#8226;   <a href="#..audio.cd_metadata.fetch_cover_art">..audio.cd_metadata.fetch_cover_art</a>
+ &#8226;   <a href="#..audio.cd_metadata.fetch_release_by_toc">..audio.cd_metadata.fetch_release_by_toc</a>
  &#8226;   <a href="#..audio.metadata.format_duration">..audio.metadata.format_duration</a>
  &#8226;   <a href="#..audio.metadata.read_metadata">..audio.metadata.read_metadata</a>
  &#8226;   <a href="#..core.custom_playlist.MoodEnum">..core.custom_playlist.MoodEnum</a>
@@ -23473,6 +23635,7 @@ imports:
  &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#audio.cd">audio.cd</a>
+ &#8226;   <a href="#audio.cd_metadata">audio.cd_metadata</a>
  &#8226;   <a href="#audio.metadata">audio.metadata</a>
  &#8226;   <a href="#core.custom_playlist">core.custom_playlist</a>
  &#8226;   <a href="#core.playlist">core.playlist</a>
@@ -23484,6 +23647,25 @@ imports:
   <div class="import">
 imported by:
     <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="ui.progress_dialog"></a>
+  <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/ui/progress_dialog.py" type="text/plain"><tt>ui.progress_dialog</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#ui">ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+ &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
 
   </div>
 
@@ -24021,7 +24203,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#email.utils">email.utils</a>
+    <a href="#audio.cd_metadata">audio.cd_metadata</a>
+ &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#http.client">http.client</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#http.server">http.server</a>
@@ -24075,7 +24258,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#http.cookiejar">http.cookiejar</a>
+    <a href="#audio.cd_metadata">audio.cd_metadata</a>
+ &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
  &#8226;   <a href="#numpy.lib._datasource">numpy.lib._datasource</a>
  &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#xml.sax.saxutils">xml.sax.saxutils</a>

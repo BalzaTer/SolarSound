@@ -43,6 +43,8 @@ class CustomTrack(Track):
     key: Optional[str] = None    # Tonalité, ex: "C", "D#", etc. (None si absent)
     energy: Optional[float] = None  # 0.0-1.0 (None si absent)
     genre: Optional[str] = None  # Genre musical (None si absent)
+    file_size: Optional[int] = None  # Taille du fichier en octets au moment de l'ajout
+    # (mémorisée pour retrouver le fichier s'il est déplacé/renommé plus tard)
 
     def to_dict(self) -> dict:
         """Convertit en dictionnaire JSON"""
@@ -56,6 +58,35 @@ class CustomTrack(Track):
 
 
 @dataclass
+class PlaylistFolder:
+    """Dossier permettant de regrouper des playlists dans l'onglet Mes Playlists"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    name: str = ""
+    order: int = 0
+    expanded: bool = True  # état plié/déplié dans l'arbre (mémorisé entre les rafraîchissements)
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "order": self.order,
+            "expanded": self.expanded,
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PlaylistFolder":
+        return cls(
+            id=d.get("id", str(uuid.uuid4())),
+            name=d.get("name", ""),
+            order=d.get("order", 0),
+            expanded=d.get("expanded", True),
+            created_at=d.get("created_at", datetime.now().isoformat()),
+        )
+
+
+@dataclass
 class CustomPlaylist:
     """Playlist personnalisée avec métadonnées et humeurs"""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -63,6 +94,8 @@ class CustomPlaylist:
     moods: List[str] = field(default_factory=list)  # Liste de MoodEnum.value
     cover_path: str = ""  # Chemin relatif ou nom fichier dans playlist_covers/
     tracks: List[CustomTrack] = field(default_factory=list)
+    folder_id: Optional[str] = None  # None = à la racine de l'onglet Mes Playlists
+    order: int = 0  # Position au sein de son dossier (ou de la racine)
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     modified_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -74,6 +107,8 @@ class CustomPlaylist:
             "moods": self.moods,
             "cover_path": self.cover_path,
             "tracks": [track.to_dict() for track in self.tracks],
+            "folder_id": self.folder_id,
+            "order": self.order,
             "created_at": self.created_at,
             "modified_at": self.modified_at,
         }
@@ -88,6 +123,8 @@ class CustomPlaylist:
             moods=d.get("moods", []),
             cover_path=d.get("cover_path", ""),
             tracks=tracks,
+            folder_id=d.get("folder_id"),
+            order=d.get("order", 0),
             created_at=d.get("created_at", datetime.now().isoformat()),
             modified_at=d.get("modified_at", datetime.now().isoformat()),
         )
@@ -129,21 +166,25 @@ class PlaylistLibrary:
     """Collection de playlists personnalisées"""
     version: int = 1
     playlists: List[CustomPlaylist] = field(default_factory=list)
+    folders: List[PlaylistFolder] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convertit en dictionnaire JSON"""
         return {
             "version": self.version,
             "playlists": [p.to_dict() for p in self.playlists],
+            "folders": [f.to_dict() for f in self.folders],
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "PlaylistLibrary":
         """Crée depuis un dictionnaire JSON"""
         playlists = [CustomPlaylist.from_dict(p) for p in d.get("playlists", [])]
+        folders = [PlaylistFolder.from_dict(f) for f in d.get("folders", [])]
         return cls(
             version=d.get("version", 1),
             playlists=playlists,
+            folders=folders,
         )
 
     def add_playlist(self, playlist: CustomPlaylist):
@@ -172,3 +213,26 @@ class PlaylistLibrary:
     def get_all_playlists(self) -> List[CustomPlaylist]:
         """Retourne toutes les playlists"""
         return self.playlists
+
+    def add_folder(self, folder: PlaylistFolder):
+        """Ajoute un dossier"""
+        self.folders.append(folder)
+
+    def get_folder(self, folder_id: str) -> Optional[PlaylistFolder]:
+        """Récupère un dossier par ID"""
+        for f in self.folders:
+            if f.id == folder_id:
+                return f
+        return None
+
+    def remove_folder(self, folder_id: str) -> bool:
+        """Supprime un dossier par ID (ne touche pas aux playlists qu'il contenait)"""
+        for i, f in enumerate(self.folders):
+            if f.id == folder_id:
+                self.folders.pop(i)
+                return True
+        return False
+
+    def get_all_folders(self) -> List[PlaylistFolder]:
+        """Retourne tous les dossiers"""
+        return self.folders

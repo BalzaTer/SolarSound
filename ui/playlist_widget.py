@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QFileDialog, QInputDialog, QMessageBox,
     QAbstractItemView, QMenu
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
+from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QThread
 from PyQt6.QtGui import QIcon, QColor, QFont, QAction
 import os
 
@@ -13,12 +13,35 @@ try:
     from ..core.playlist import Playlist, Track, PlayMode
     from ..audio.metadata import read_metadata, format_duration
     from ..audio.cd import CdAudio, make_cd_uri
+    from ..audio.cd_metadata import fetch_release_by_toc, fetch_cover_art, cache_cover_for_drive
     from ..core.custom_playlist import MoodEnum
 except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, Track, PlayMode
     from audio.metadata import read_metadata, format_duration
     from audio.cd import CdAudio, make_cd_uri
+    from audio.cd_metadata import fetch_release_by_toc, fetch_cover_art, cache_cover_for_drive
     from core.custom_playlist import MoodEnum
+
+
+class CdMetadataWorker(QThread):
+    """
+    Recherche en arrière-plan les métadonnées (titre/artiste/album/pochette)
+    d'un CD inséré, via MusicBrainz, sans bloquer l'interface pendant la
+    requête réseau.
+    """
+
+    result_ready = pyqtSignal(object, object)  # (dict metadonnées ou None, bytes pochette ou None)
+
+    def __init__(self, toc: dict, parent=None):
+        super().__init__(parent)
+        self.toc = toc
+
+    def run(self):
+        metadata = fetch_release_by_toc(self.toc)
+        cover_bytes = None
+        if metadata and metadata.get("mbid"):
+            cover_bytes = fetch_cover_art(metadata["mbid"])
+        self.result_ready.emit(metadata, cover_bytes)
 
 
 class PlaylistWidget(QWidget):
@@ -34,6 +57,7 @@ class PlaylistWidget(QWidget):
         self.setAcceptDrops(True)
         self.playlist = playlist
         self._theme_colors = {}
+        self._cd_metadata_worker = None  # référence gardée le temps de la recherche en ligne
         self._setup_ui()
         self._connect_signals()
 
@@ -186,9 +210,65 @@ class PlaylistWidget(QWidget):
                 tracks.append(track)
             self._update_count()
             self.playlist_changed.emit()
+
+            # Recherche automatique des métadonnées (titre/artiste/album/
+            # pochette) en ligne, en arrière-plan pour ne pas bloquer
+            # l'interface pendant la requête réseau.
+            try:
+                toc = CdAudio.read_toc(drive)
+                self._cd_metadata_worker = CdMetadataWorker(toc, self)
+                self._cd_metadata_worker.result_ready.connect(
+                    lambda metadata, cover, tracks=tracks, drive=drive:
+                        self._on_cd_metadata_ready(tracks, drive, metadata, cover)
+                )
+                self._cd_metadata_worker.start()
+            except Exception as toc_exc:
+                print(f"[CD] Lecture du TOC impossible, pas de recherche de métadonnées : {toc_exc}")
+
         except Exception as exc:
             cd.close()
             QMessageBox.critical(self, "CD audio", f"Impossible de lire le CD :\n{exc}")
+
+    def _on_cd_metadata_ready(self, tracks, drive, metadata, cover_bytes):
+        """
+        Applique les métadonnées trouvées en ligne pour ce CD (titre par
+        piste, artiste, album, pochette), si une correspondance a été
+        trouvée sur MusicBrainz. En l'absence de correspondance ou de
+        réseau, les titres génériques ("Piste 01"...) sont conservés.
+        """
+        self._cd_metadata_worker = None
+
+        if cover_bytes:
+            cache_cover_for_drive(drive, cover_bytes)
+
+        if not metadata:
+            return
+
+        album = metadata.get("album") or ""
+        artist = metadata.get("artist") or ""
+        mb_tracks = metadata.get("tracks") or []
+
+        for i, track in enumerate(tracks):
+            if album:
+                track.album = album
+            if artist:
+                track.artist = artist
+            if i < len(mb_tracks) and mb_tracks[i]:
+                track.title = mb_tracks[i]
+            self._refresh_item_for_path(track.path, track)
+
+        self.playlist_changed.emit()
+
+    def _refresh_item_for_path(self, path: str, track: Track):
+        """Met à jour le texte affiché d'une piste déjà présente dans la liste."""
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == path:
+                dur = format_duration(track.duration) if track.duration > 0 else "--:--"
+                artist_part = f" — {track.artist}" if track.artist else ""
+                item.setText(f"{track.title}{artist_part}")
+                item.setToolTip(track.path)
+                break
 
     # Gestion du glisser-déposer externe (fichiers et dossiers)
     def dragEnterEvent(self, event):

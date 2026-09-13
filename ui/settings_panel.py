@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QGroupBox,
     QLabel, QPushButton, QLineEdit, QFontComboBox, QSpinBox,
     QColorDialog, QFrame, QScrollArea, QGridLayout, QComboBox,
-    QCheckBox, QDoubleSpinBox, QSizePolicy
+    QCheckBox, QDoubleSpinBox, QSizePolicy, QListWidget, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor, QFont, QKeySequence, QPalette
@@ -539,6 +539,73 @@ class AudioTab(QWidget):
 
 # ── Panneau Paramètres complet ────────────────────────────────────────────────
 
+class LibraryTab(QWidget):
+    """
+    Dossiers de musique locaux : utilisés pour élargir la recherche aux
+    fichiers non encore ajoutés à une playlist, et pour retrouver les pistes
+    déplacées/renommées dans l'onglet "Mes Playlists".
+    """
+
+    folders_changed = pyqtSignal(list)
+
+    def __init__(self, folders: list = None, parent=None):
+        super().__init__(parent)
+        folders = folders or []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        group = QGroupBox("DOSSIERS DE MUSIQUE")
+        group_layout = QVBoxLayout(group)
+
+        hint = QLabel(
+            "Ces dossiers sont utilisés pour élargir la recherche aux "
+            "fichiers non encore ajoutés à une playlist, et pour retrouver "
+            "les pistes déplacées ou renommées depuis l'onglet \"Mes Playlists\"."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("font-size: 11px; color: #7a6a48;")
+        group_layout.addWidget(hint)
+
+        self.list_folders = QListWidget()
+        self.list_folders.addItems(folders)
+        group_layout.addWidget(self.list_folders)
+
+        buttons_row = QHBoxLayout()
+        self.btn_add = QPushButton("＋ Ajouter un dossier")
+        self.btn_remove = QPushButton("－ Retirer")
+        buttons_row.addWidget(self.btn_add)
+        buttons_row.addWidget(self.btn_remove)
+        group_layout.addLayout(buttons_row)
+
+        layout.addWidget(group)
+        layout.addStretch()
+
+        self.btn_add.clicked.connect(self._on_add)
+        self.btn_remove.clicked.connect(self._on_remove)
+
+    def _on_add(self):
+        folder = QFileDialog.getExistingDirectory(self, "Choisir un dossier de musique")
+        if folder:
+            existing = self.get_folders()
+            if folder not in existing:
+                self.list_folders.addItem(folder)
+                self.folders_changed.emit(self.get_folders())
+
+    def _on_remove(self):
+        row = self.list_folders.currentRow()
+        if row >= 0:
+            self.list_folders.takeItem(row)
+            self.folders_changed.emit(self.get_folders())
+
+    def get_folders(self) -> list:
+        return [self.list_folders.item(i).text() for i in range(self.list_folders.count())]
+
+    def set_folders(self, folders: list):
+        self.list_folders.clear()
+        self.list_folders.addItems(folders or [])
+
+
 class SettingsPanel(QWidget):
     """Panneau de paramètres avec onglets audio, raccourcis, couleurs et polices."""
 
@@ -547,18 +614,22 @@ class SettingsPanel(QWidget):
     shortcuts_changed = pyqtSignal(dict)
     colors_changed    = pyqtSignal(dict)
     font_changed      = pyqtSignal(dict)
+    folders_changed   = pyqtSignal(list)
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
-                 output_device=None, progress_style="classic", parent=None):
+                 output_device=None, progress_style="classic",
+                 library_folders: list = None, parent=None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
         font_cfg  = font_cfg  or dict(DEFAULT_FONT)
 
-        self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device, progress_style)
+        self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device,
+                        progress_style, library_folders or [])
 
-    def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device, progress_style):
+    def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device,
+                  progress_style, library_folders):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -581,6 +652,10 @@ class SettingsPanel(QWidget):
         self.fonts_tab.font_changed.connect(self.font_changed)
         tabs.addTab(self.fonts_tab, "🔤  Polices")
 
+        self.library_tab = LibraryTab(library_folders)
+        self.library_tab.folders_changed.connect(self.folders_changed)
+        tabs.addTab(self.library_tab, "📁  Bibliothèque")
+
         layout.addWidget(tabs)
 
     def get_shortcuts(self) -> dict:
@@ -597,6 +672,9 @@ class SettingsPanel(QWidget):
 
     def get_progress_style(self):
         return self.audio_tab.get_progress_style()
+
+    def get_library_folders(self) -> list:
+        return self.library_tab.get_folders()
 
     def apply_all(self, shortcuts: dict, colors: dict, font_cfg: dict):
         """Recharge tout depuis une config sauvegardée."""

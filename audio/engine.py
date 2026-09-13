@@ -141,6 +141,75 @@ class LowPassFilter:
         return out
 
 
+def decode_audio_file(filepath: str):
+    """
+    Décodeur audio universel, indépendant d'AudioEngine (réutilisable par
+    d'autres lecteurs, ex : les extraits audio de la recherche) : soundfile
+    d'abord, puis repli stdlib wave. Formats : WAV, MP3, FLAC, OGG, OPUS,
+    AIFF, AU et plus. Retourne (données PCM int16 stéréo, fréquence
+    d'échantillonnage).
+    """
+    last_error: Optional[Exception] = None
+
+    if not SOUNDFILE_OK:
+        last_error = RuntimeError("module soundfile indisponible (import a echoue au demarrage)")
+    else:
+        try:
+            return _decode_soundfile(filepath)
+        except Exception as e:
+            last_error = e
+
+    if filepath.lower().endswith('.wav'):
+        try:
+            return _decode_wav_stdlib(filepath)
+        except Exception as e:
+            last_error = e
+
+    raise RuntimeError(
+        f"Format non supporte ou fichier illisible : {filepath}\n"
+        f"Formats supportes : WAV MP3 FLAC OGG OPUS AIFF\n"
+        f"Cause : {last_error}"
+    )
+
+
+def _decode_soundfile(filepath: str):
+    """Decode via soundfile : WAV, MP3, FLAC, OGG, AIFF..."""
+    data, sr = sf.read(filepath, dtype='float32', always_2d=True)
+    if data.shape[1] == 1:
+        data = np.column_stack([data[:, 0], data[:, 0]])
+    elif data.shape[1] > 2:
+        data = data[:, :2]
+    data_int16 = (data * 32767).clip(-32768, 32767).astype(np.int16)
+    return data_int16, sr
+
+
+def _decode_wav_stdlib(filepath: str):
+    """Fallback stdlib wave pour WAV brut."""
+    with _wave_mod.open(filepath, 'rb') as f:
+        sr  = f.getframerate()
+        ch  = f.getnchannels()
+        sw  = f.getsampwidth()
+        raw = f.readframes(f.getnframes())
+    if sw == 1:
+        data = (np.frombuffer(raw, dtype=np.uint8).astype(np.int16) - 128) * 256
+    elif sw == 2:
+        data = np.frombuffer(raw, dtype=np.int16).copy()
+    elif sw == 3:
+        n = len(raw) // 3
+        data = np.array(
+            [int.from_bytes(raw[i*3:(i+1)*3], 'little', signed=True) >> 8
+             for i in range(n)], dtype=np.int16)
+    elif sw == 4:
+        data = (np.frombuffer(raw, dtype=np.int32) >> 16).astype(np.int16)
+    else:
+        raise ValueError(f'sample_width={sw} non supporte')
+    if ch == 1:
+        data = np.column_stack([data, data])
+    else:
+        data = data.reshape(-1, ch)[:, :2]
+    return data, sr
+
+
 class AudioEngine:
     """Moteur de lecture audio avec spatialisation 5.1"""
 
@@ -247,67 +316,13 @@ class AudioEngine:
             return False
 
     def _decode_file(self, filepath: str):
-        """
-        Decodeur universel : soundfile d'abord, puis fallback stdlib wave.
-        Formats : WAV, MP3, FLAC, OGG, OPUS, AIFF, AU et plus.
-        """
-        last_error: Optional[Exception] = None
-
-        if not SOUNDFILE_OK:
-            last_error = RuntimeError("module soundfile indisponible (import a echoue au demarrage)")
-        else:
-            try:
-                return self._decode_soundfile(filepath)
-            except Exception as e:
-                last_error = e
-
-        if filepath.lower().endswith('.wav'):
-            try:
-                return self._decode_wav_stdlib(filepath)
-            except Exception as e:
-                last_error = e
-
-        raise RuntimeError(
-            f"Format non supporte ou fichier illisible : {filepath}\n"
-            f"Formats supportes : WAV MP3 FLAC OGG OPUS AIFF\n"
-            f"Cause : {last_error}"
-        )
+        return decode_audio_file(filepath)
 
     def _decode_soundfile(self, filepath: str):
-        """Decode via soundfile : WAV, MP3, FLAC, OGG, AIFF..."""
-        data, sr = sf.read(filepath, dtype='float32', always_2d=True)
-        if data.shape[1] == 1:
-            data = np.column_stack([data[:, 0], data[:, 0]])
-        elif data.shape[1] > 2:
-            data = data[:, :2]
-        data_int16 = (data * 32767).clip(-32768, 32767).astype(np.int16)
-        return data_int16, sr
+        return _decode_soundfile(filepath)
 
     def _decode_wav_stdlib(self, filepath: str):
-        """Fallback stdlib wave pour WAV brut."""
-        with _wave_mod.open(filepath, 'rb') as f:
-            sr  = f.getframerate()
-            ch  = f.getnchannels()
-            sw  = f.getsampwidth()
-            raw = f.readframes(f.getnframes())
-        if sw == 1:
-            data = (np.frombuffer(raw, dtype=np.uint8).astype(np.int16) - 128) * 256
-        elif sw == 2:
-            data = np.frombuffer(raw, dtype=np.int16).copy()
-        elif sw == 3:
-            n = len(raw) // 3
-            data = np.array(
-                [int.from_bytes(raw[i*3:(i+1)*3], 'little', signed=True) >> 8
-                 for i in range(n)], dtype=np.int16)
-        elif sw == 4:
-            data = (np.frombuffer(raw, dtype=np.int32) >> 16).astype(np.int16)
-        else:
-            raise ValueError(f'sample_width={sw} non supporte')
-        if ch == 1:
-            data = np.column_stack([data, data])
-        else:
-            data = data.reshape(-1, ch)[:, :2]
-        return data, sr
+        return _decode_wav_stdlib(filepath)
 
     # ── Lecture / Contrôle ────────────────────────────────────────────
     def play(self):

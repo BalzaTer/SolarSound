@@ -131,6 +131,63 @@ class CdAudio:
             self.close()
 
     @staticmethod
+    def read_toc(drive: str) -> dict:
+        """
+        Lit le sommaire (TOC) brut du CD, au format attendu par les bases de
+        métadonnées en ligne (MusicBrainz/CDDB) : offsets en frames CDDA
+        (75 frames/seconde) *incluant* le décalage de 150 frames standard du
+        lead-in (à la différence de read_track/CdStream, qui calculent des
+        LBA "vrais" pour l'extraction audio, sans ce décalage).
+
+        Returns:
+            dict avec les clés : first_track, last_track, track_offsets
+            (liste, une entrée par piste dans l'ordre), leadout_offset
+        """
+        if os.name != "nt":
+            raise RuntimeError("La lecture du TOC est disponible uniquement sous Windows")
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.DeviceIoControl.argtypes = [
+            ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint,
+            ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.c_void_p,
+        ]
+        handle = kernel32.CreateFileW(
+            f"\\\\.\\{drive.rstrip(':')[:1].upper()}:",
+            0x80000000, 0x00000001 | 0x00000002, None, 3, 0, None
+        )
+        if handle == ctypes.c_void_p(-1).value:
+            raise OSError(f"Impossible d'ouvrir le lecteur CD {drive}")
+
+        try:
+            toc = ctypes.create_string_buffer(804)
+            returned = ctypes.c_uint()
+            if not kernel32.DeviceIoControl(handle, 0x00024000, None, 0,
+                                            toc, len(toc), ctypes.byref(returned), None):
+                raise OSError("Impossible de lire la table des pistes du CD")
+
+            first = toc.raw[2]
+            last = toc.raw[3]
+
+            def frame_offset(number: int) -> int:
+                offset = 4 + (number - first) * 8
+                minute, second, frame = toc.raw[offset + 5:offset + 8]
+                return (minute * 60 + second) * 75 + frame
+
+            track_offsets = [frame_offset(n) for n in range(first, last + 1)]
+            leadout_offset = frame_offset(last + 1)  # entrée juste après la dernière piste
+
+            return {
+                "first_track": first,
+                "last_track": last,
+                "track_offsets": track_offsets,
+                "leadout_offset": leadout_offset,
+            }
+        finally:
+            kernel32.CloseHandle(handle)
+
+    @staticmethod
     def read_track(drive: str, track: int) -> tuple[np.ndarray, int]:
         """Extrait une piste CDDA en PCM 16 bits stéréo à 44,1 kHz."""
         if os.name != "nt":
@@ -138,6 +195,7 @@ class CdAudio:
 
         kernel32 = ctypes.windll.kernel32
         kernel32.CreateFileW.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
         kernel32.DeviceIoControl.argtypes = [
             ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint,
             ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_uint), ctypes.c_void_p,
@@ -216,12 +274,21 @@ class CdStream:
     def open(self):
         kernel32 = ctypes.windll.kernel32
         kernel32.CreateFileW.restype = ctypes.c_void_p
-        self.handle = kernel32.CreateFileW(
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel32.CreateFileW(
             f"\\\\.\\{self.drive}", 0x80000000,
             0x00000001 | 0x00000002, None, 3, 0, None
         )
-        if self.handle == ctypes.c_void_p(-1).value:
+        # Ne jamais mémoriser un handle invalide : sinon close() serait
+        # appelé plus tard avec cette valeur corrompue (ex : lorsque la
+        # piste suivante tente de démarrer après cet échec), ce qui plante
+        # l'appel ctypes à CloseHandle (OverflowError). Voir le lecteur/
+        # disque absent au redémarrage : ce cas doit rester une simple
+        # erreur récupérable, jamais un crash.
+        if handle is None or handle == ctypes.c_void_p(-1).value:
+            self.handle = None
             raise OSError(f"Impossible d'ouvrir le lecteur CD {self.drive}")
+        self.handle = handle
 
         try:
             toc = ctypes.create_string_buffer(804)
@@ -277,5 +344,13 @@ class CdStream:
 
     def close(self):
         if self.handle is not None:
-            ctypes.windll.kernel32.CloseHandle(self.handle)
-            self.handle = None
+            try:
+                ctypes.windll.kernel32.CloseHandle(self.handle)
+            except Exception as e:
+                # Ne jamais laisser un souci de fermeture de handle CD
+                # remonter et faire planter l'application (notamment lors
+                # d'un enchaînement automatique de pistes après un lecteur/
+                # disque devenu indisponible).
+                print(f"[CdStream] Erreur fermeture handle CD (ignorée) : {e}")
+            finally:
+                self.handle = None

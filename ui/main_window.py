@@ -2,6 +2,7 @@
 
 import os
 import sys
+import random
 from typing import List
 
 from PyQt6.QtWidgets import (
@@ -9,9 +10,10 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
     QPushButton, QLabel, QSlider, QTabWidget, QFrame,
     QSizePolicy, QMenuBar, QStatusBar, QMessageBox,
-    QFileDialog, QGroupBox, QApplication
+    QFileDialog, QGroupBox, QApplication,
+    QLineEdit, QListWidget, QListWidgetItem
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal, QPoint, QEvent
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter
 from PyQt6.QtSvg import QSvgRenderer
 
@@ -33,6 +35,10 @@ try:
     from ..core.playlist_manager import PlaylistManager
     from ..audio.engine import AudioEngine, SpatialConfig
     from ..audio.cd import parse_cd_uri
+    from ..audio.cd_metadata import get_cached_cover_for_drive
+    from ..core.library_scanner import scan_library_folders
+    from .progress_dialog import run_with_progress
+    from ..audio.preview_player import PreviewPlayer
     from ..audio.metadata import format_duration, read_metadata, read_cover_art_data
     from ..core.error_logging import append_error_log
     from ..core.volume import gain_to_slider_value, slider_to_gain
@@ -62,6 +68,10 @@ except (ImportError, ModuleNotFoundError):
     from audio.engine import AudioEngine, SpatialConfig
     from ui.equalizer_panel import EqualizerPanel
     from audio.cd import parse_cd_uri
+    from audio.cd_metadata import get_cached_cover_for_drive
+    from core.library_scanner import scan_library_folders
+    from ui.progress_dialog import run_with_progress
+    from audio.preview_player import PreviewPlayer
     from audio.metadata import format_duration, read_metadata, read_cover_art_data
     from core.error_logging import append_error_log
     from core.volume import gain_to_slider_value, slider_to_gain
@@ -134,6 +144,110 @@ class DetachableTabWidget(QTabWidget):
         win.show()
 
 
+class SearchResultsPopup(QListWidget):
+    """
+    Liste déroulante des résultats de recherche (pistes/albums/artistes/
+    playlists), affichée sous le champ de recherche de la barre de menus.
+
+    Utilise Qt.WindowType.ToolTip + WA_ShowWithoutActivating (et non
+    Qt.WindowType.Popup) pour ne JAMAIS voler le focus clavier au champ de
+    recherche : un Popup Qt fait un grab clavier implicite dès qu'il
+    s'affiche, ce qui empêchait de taper plus d'un caractère. Un ToolTip ne
+    prend jamais le focus, donc la frappe continue normalement dans le champ.
+    """
+
+    result_activated = pyqtSignal(dict)
+    hover_preview_requested = pyqtSignal(dict)  # survol > 1.5s d'un résultat
+    hover_preview_cancelled = pyqtSignal()       # fin du survol / fermeture
+
+    HOVER_DELAY_MS = 1500
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.ToolTip | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setIconSize(QSize(32, 32))
+        self.setMouseTracking(True)
+        self.setStyleSheet(
+            "QListWidget { border: 1px solid #5a4a28; }"
+            "QListWidget::item { padding: 4px 6px; }"
+        )
+        self.itemClicked.connect(self._on_item_clicked)
+        self.itemEntered.connect(self._on_item_entered)
+
+        self._hovered_item = None
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.setInterval(self.HOVER_DELAY_MS)
+        self._hover_timer.timeout.connect(self._on_hover_timeout)
+
+    def _on_item_clicked(self, item):
+        payload = item.data(Qt.ItemDataRole.UserRole)
+        if payload:
+            self.result_activated.emit(payload)
+        self.hide()
+
+    def _on_item_entered(self, item):
+        if item is self._hovered_item:
+            return
+        self._hovered_item = item
+        self._hover_timer.stop()
+        self.hover_preview_cancelled.emit()
+        if item.data(Qt.ItemDataRole.UserRole):
+            self._hover_timer.start()
+
+    def _on_hover_timeout(self):
+        if self._hovered_item:
+            payload = self._hovered_item.data(Qt.ItemDataRole.UserRole)
+            if payload:
+                self.hover_preview_requested.emit(payload)
+
+    def leaveEvent(self, event):
+        self._hover_timer.stop()
+        self._hovered_item = None
+        self.hover_preview_cancelled.emit()
+        super().leaveEvent(event)
+
+    def hide(self):
+        self._hover_timer.stop()
+        self._hovered_item = None
+        self.hover_preview_cancelled.emit()
+        super().hide()
+
+    def add_header(self, text: str):
+        item = QListWidgetItem(text)
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+        self.addItem(item)
+
+    def add_result(self, text: str, subtitle: str, icon, payload: dict):
+        label = text if not subtitle else f"{text}  —  {subtitle}"
+        item = QListWidgetItem(label)
+        if icon:
+            item.setIcon(icon)
+        item.setData(Qt.ItemDataRole.UserRole, payload)
+        self.addItem(item)
+
+    def show_below(self, widget):
+        pos = widget.mapToGlobal(QPoint(0, widget.height()))
+        width = max(widget.width(), 380)
+
+        screen = widget.screen() if hasattr(widget, "screen") else None
+        if screen:
+            available = screen.availableGeometry()
+            # Ne jamais déborder sur l'écran voisin ni hors de l'écran courant
+            max_x = available.right() - width
+            pos.setX(min(max(pos.x(), available.left()), max(max_x, available.left())))
+            max_height = max(150, available.bottom() - pos.y() - 10)
+            self.setMaximumHeight(max_height)
+        self.move(pos)
+        self.setFixedWidth(width)
+        self.show()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, open_files: List[str] = None):
         super().__init__()
@@ -160,6 +274,13 @@ class MainWindow(QMainWindow):
         self._position_save_timer.setInterval(10000)
         self._position_save_timer.timeout.connect(self._schedule_save)
         self._position_save_timer.start()
+
+        # Dossiers de musique locaux (Paramètres → Bibliothèque) : élargissent
+        # la recherche aux fichiers non encore ajoutés à une playlist, et
+        # servent à retrouver les pistes déplacées/renommées.
+        self._library_folders: List[str] = []
+        self._library_index_cache: list = []
+        self._preview_player = PreviewPlayer()
 
         # Géométrie normale (hors minimisé) — mise à jour via changeEvent/moveEvent/resizeEvent
         self._normal_geometry = None
@@ -400,6 +521,7 @@ class MainWindow(QMainWindow):
         state.shortcuts = self._shortcuts
         state.colors    = self._colors
         state.font_cfg  = self._font_cfg
+        state.library_folders = self._library_folders
         self._session.save(state)
 
     def _restore_session(self, state: SessionState):
@@ -437,6 +559,11 @@ class MainWindow(QMainWindow):
                 self.settings_panel.audio_tab.cmb_output.findData(state.output_device)
             )
         self._set_progress_style(getattr(state, "progress_style", "classic"), emit=False)
+
+        # ── Dossiers de musique (Bibliothèque) ──────────────────────
+        self._library_folders = getattr(state, "library_folders", []) or []
+        self.settings_panel.library_tab.set_folders(self._library_folders)
+        self._rebuild_library_index()
 
         # ── Config spatiale ──────────────────────────────────────────
         if state.spatial_config:
@@ -491,7 +618,10 @@ class MainWindow(QMainWindow):
                             self.engine.duration_seconds,
                         ))
                         self.engine.seek(pos)
-                        self.intensity_progress.set_levels(self.engine.get_timeline_levels(240))
+                        is_cd = parse_cd_uri(track.path) is not None
+                        self._update_progress_stack_for_track(is_cd)
+                        if not is_cd:
+                            self.intensity_progress.set_levels(self.engine.get_timeline_levels(240))
                         self._update_track_display(track)
                         dur = self.engine.duration_seconds
                         self.lbl_dur.setText(format_duration(dur))
@@ -894,7 +1024,9 @@ class MainWindow(QMainWindow):
         tabs.addTab(self.video_window, "🎬  Vidéo")
 
         # ── Mes Playlists (playlists personnalisées avec humeurs) ─────
-        self.playlist_manager_panel = PlaylistManagerPanel(self.playlist_manager)
+        self.playlist_manager_panel = PlaylistManagerPanel(
+            self.playlist_manager, get_library_folders=lambda: self._library_folders
+        )
         self.playlist_manager_panel.load_requested.connect(self._on_load_custom_playlist)
         self._playlists_tab_index = 2
         tabs.insertTab(self._playlists_tab_index, self.playlist_manager_panel, "💾  Mes Playlists")
@@ -925,13 +1057,15 @@ class MainWindow(QMainWindow):
         # ── Paramètres ────────────────────────────────────────────────
         self.settings_panel = SettingsPanel(
             self._shortcuts, self._colors, self._font_cfg,
-            self.engine.output_devices(), self.engine.output_device, self._progress_style
+            self.engine.output_devices(), self.engine.output_device, self._progress_style,
+            self._library_folders
         )
         self.settings_panel.output_changed.connect(self._on_output_changed)
         self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
         self.settings_panel.shortcuts_changed.connect(self._on_shortcuts_changed)
         self.settings_panel.colors_changed.connect(self._on_colors_changed)
         self.settings_panel.font_changed.connect(self._on_font_changed)
+        self.settings_panel.folders_changed.connect(self._on_library_folders_changed)
         tabs.addTab(self.settings_panel, "⚙  Paramètres")
 
         # Activer l'onglet vidéo par défaut (index 1)
@@ -1000,10 +1134,251 @@ class MainWindow(QMainWindow):
         act_about.triggered.connect(self._show_about)
         about_menu.addAction(act_about)
 
+        # ── Recherche (pistes / albums / artistes / playlists) ────────
+        self.search_field = QLineEdit()
+        self.search_field.setPlaceholderText("🔍 Rechercher pistes, albums, artistes, playlists…")
+        self.search_field.setMinimumWidth(260)
+        self.search_field.setClearButtonEnabled(True)
+        self.search_field.textChanged.connect(self._on_search_text_changed)
+        self.search_field.installEventFilter(self)
+
+        # Conteneur avec marges : le champ ne doit pas coller aux bords de
+        # la barre de menus.
+        search_container = QWidget()
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(8, 4, 12, 4)
+        search_layout.addWidget(self.search_field)
+
+        self.search_popup = SearchResultsPopup(self)
+        self.search_popup.result_activated.connect(self._on_search_result_activated)
+        self.search_popup.hover_preview_requested.connect(self._on_search_hover_preview)
+        self.search_popup.hover_preview_cancelled.connect(self._on_search_hover_preview_cancelled)
+
+        mb.setCornerWidget(search_container, Qt.Corner.TopRightCorner)
+
     def _build_status_bar(self):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Prêt")
+
+    # ══════════════════════════════════════════════════════════════════
+    # Recherche (pistes / albums / artistes / playlists)
+    # ══════════════════════════════════════════════════════════════════
+    def _get_track_cover_icon(self, track):
+        """Icône de pochette pour une piste (fichier local, tags embarqués, ou CD via cache)."""
+        cover_data = read_cover_art_data(track.path)
+        if not cover_data:
+            cd_location = parse_cd_uri(track.path)
+            if cd_location:
+                drive, _ = cd_location
+                cover_data = get_cached_cover_for_drive(drive)
+        if not cover_data:
+            return None
+        pixmap = QPixmap()
+        if pixmap.loadFromData(cover_data):
+            return QIcon(pixmap)
+        return None
+
+    def _all_known_tracks_deduped(self):
+        """Toutes les pistes connues (liste de lecture + playlists perso), sans doublon de chemin."""
+        all_tracks = list(self.playlist.tracks)
+        for cp in self.playlist_manager.get_all_playlists():
+            all_tracks.extend(cp.tracks)
+
+        seen_paths = set()
+        unique_tracks = []
+        for t in all_tracks:
+            if t.path in seen_paths:
+                continue
+            seen_paths.add(t.path)
+            unique_tracks.append(t)
+
+        # Fichiers des dossiers de musique configurés (Paramètres →
+        # Bibliothèque) pas encore ajoutés à une playlist : élargit la
+        # recherche à toute la bibliothèque locale, pas seulement à ce qui
+        # est déjà en playlist.
+        for entry in self._library_index_cache:
+            if entry["path"] in seen_paths:
+                continue
+            seen_paths.add(entry["path"])
+            unique_tracks.append(Track(
+                path=entry["path"],
+                title=entry.get("title") or os.path.basename(entry["path"]),
+                artist=entry.get("artist", ""),
+                album=entry.get("album", ""),
+                duration=entry.get("duration", 0.0),
+            ))
+
+        return unique_tracks
+
+    def _rebuild_library_index(self):
+        """
+        Réindexe les dossiers de musique configurés (utilisé par la
+        recherche), en arrière-plan avec une fenêtre de progression.
+        """
+        if not self._library_folders:
+            self._library_index_cache = []
+            return
+        run_with_progress(
+            self, "Indexation de la bibliothèque",
+            "Analyse des dossiers de musique…",
+            scan_library_folders,
+            on_success=self._on_library_index_ready,
+            on_error=self._on_library_index_error,
+            folders=self._library_folders,
+        )
+
+    def _on_library_index_ready(self, index: list):
+        self._library_index_cache = index
+
+    def _on_library_index_error(self, message: str):
+        self._library_index_cache = []
+        QMessageBox.warning(
+            self, "Indexation de la bibliothèque",
+            f"L'analyse des dossiers de musique a échoué :\n{message}"
+        )
+
+    def _on_library_folders_changed(self, folders: list):
+        self._library_folders = folders
+        self._rebuild_library_index()
+        self._schedule_save()
+
+    def _on_search_text_changed(self, text: str):
+        query = text.strip().lower()
+        if not query:
+            self.search_popup.hide()
+            return
+        self._populate_search_results(query)
+        if self.search_popup.count() > 0:
+            self.search_popup.show_below(self.search_field)
+        else:
+            self.search_popup.hide()
+
+    def _populate_search_results(self, query: str, limit_per_section: int = 8):
+        self.search_popup.clear()
+        unique_tracks = self._all_known_tracks_deduped()
+
+        # ── Pistes ──────────────────────────────────────────────────
+        track_matches = [
+            t for t in unique_tracks
+            if query in (t.title or "").lower()
+            or query in (t.artist or "").lower()
+            or query in (t.album or "").lower()
+        ][:limit_per_section]
+
+        if track_matches:
+            self.search_popup.add_header("Pistes")
+            for t in track_matches:
+                icon = self._get_track_cover_icon(t)
+                self.search_popup.add_result(
+                    t.title or os.path.basename(t.path), t.artist, icon,
+                    {"type": "track", "track": t},
+                )
+
+        # ── Albums ──────────────────────────────────────────────────
+        albums = {}
+        for t in unique_tracks:
+            if t.album and query in t.album.lower():
+                albums.setdefault(t.album, []).append(t)
+        if albums:
+            self.search_popup.add_header("Albums")
+            for name, tracks in list(albums.items())[:limit_per_section]:
+                icon = self._get_track_cover_icon(tracks[0])
+                self.search_popup.add_result(
+                    name, tracks[0].artist, icon,
+                    {"type": "album", "tracks": tracks},
+                )
+
+        # ── Artistes ────────────────────────────────────────────────
+        artists = {}
+        for t in unique_tracks:
+            if t.artist and query in t.artist.lower():
+                artists.setdefault(t.artist, []).append(t)
+        if artists:
+            self.search_popup.add_header("Artistes")
+            for name, tracks in list(artists.items())[:limit_per_section]:
+                icon = self._get_track_cover_icon(tracks[0])
+                self.search_popup.add_result(
+                    name, f"{len(tracks)} piste{'s' if len(tracks) > 1 else ''}", icon,
+                    {"type": "artist", "tracks": tracks},
+                )
+
+        # ── Playlists personnalisées ────────────────────────────────
+        playlist_matches = [
+            p for p in self.playlist_manager.get_all_playlists()
+            if query in (p.name or "").lower()
+        ][:limit_per_section]
+        if playlist_matches:
+            self.search_popup.add_header("Playlists")
+            for p in playlist_matches:
+                icon = self.playlist_manager_panel._cover_icon(p)
+                n = len(p.tracks)
+                self.search_popup.add_result(
+                    p.name, f"{n} piste{'s' if n > 1 else ''}", icon,
+                    {"type": "playlist", "id": p.id},
+                )
+
+    def _on_search_result_activated(self, payload: dict):
+        kind = payload.get("type")
+        if kind == "track":
+            self._play_track_now(payload["track"])
+        elif kind in ("album", "artist"):
+            self._load_custom_tracks_into_playlist(payload["tracks"], mode="replace")
+        elif kind == "playlist":
+            self._tabs.setCurrentIndex(self._playlists_tab_index)
+            self.playlist_manager_panel.refresh_playlists()
+            self.playlist_manager_panel._select_playlist_id(payload["id"])
+        self.search_field.clear()
+
+    def _play_track_now(self, track):
+        """Ajoute une piste trouvée par la recherche à la liste de lecture et la joue immédiatement."""
+        self.playlist.add_track(track)
+        self.playlist_widget._add_list_item(track)
+        self.playlist_widget._update_count()
+        self.playlist_widget.playlist_changed.emit()
+        self._load_and_play(track, len(self.playlist.tracks) - 1)
+
+    def eventFilter(self, obj, event):
+        if obj is self.search_field:
+            if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+                self.search_popup.hide()
+                self.search_field.clear()
+                return True
+            if event.type() == QEvent.Type.FocusOut:
+                self.search_popup.hide()
+        return super().eventFilter(obj, event)
+
+    def _on_search_hover_preview(self, payload: dict):
+        """
+        Survol prolongé (>1,5s) d'un résultat de recherche : joue un court
+        extrait en arrière-plan, sans jamais toucher au lecteur principal
+        ni à la liste de lecture affichée (juste pour se faire une idée).
+        """
+        kind = payload.get("type")
+        track = None
+
+        if kind == "track":
+            track = payload.get("track")
+        elif kind in ("album", "artist"):
+            tracks = payload.get("tracks") or []
+            if tracks:
+                track = random.choice(tracks)
+        elif kind == "playlist":
+            playlist = self.playlist_manager.get_playlist(payload.get("id"))
+            if playlist and playlist.tracks:
+                track = random.choice(playlist.tracks)
+
+        if not track or not getattr(track, "path", None):
+            return
+        # Les pistes CD sont lues en flux direct depuis le disque ; un
+        # aperçu ponctuel n'est pas géré pour elles (hors périmètre).
+        if parse_cd_uri(track.path):
+            return
+
+        self._preview_player.play_excerpt(track.path)
+
+    def _on_search_hover_preview_cancelled(self):
+        self._preview_player.stop()
 
     # ══════════════════════════════════════════════════════════════════
     # Timer UI
@@ -1107,6 +1482,13 @@ class MainWindow(QMainWindow):
             if track:
                 self._load_and_play(track, self.playlist.current_index)
     def _on_stop(self):
+        # Le raccourci Échap est partagé avec la fermeture de la recherche :
+        # si le champ de recherche a le focus, Échap ferme juste le menu
+        # déroulant au lieu d'arrêter la lecture.
+        if self.search_field.hasFocus():
+            self.search_popup.hide()
+            self.search_field.clear()
+            return
         if self._media_mode == 'video':
             self.video_engine.stop()
             self.video_window.controls.set_playing(False)
@@ -1201,7 +1583,10 @@ class MainWindow(QMainWindow):
             self.video_engine.stop()
         ok = self.engine.load(track.path)
         if ok:
-            self.intensity_progress.set_levels(self.engine.get_timeline_levels(240))
+            is_cd = parse_cd_uri(track.path) is not None
+            self._update_progress_stack_for_track(is_cd)
+            if not is_cd:
+                self.intensity_progress.set_levels(self.engine.get_timeline_levels(240))
             self.engine.play()
             self._set_play_icon(True)
             self._update_track_display(track)
@@ -1249,6 +1634,14 @@ class MainWindow(QMainWindow):
             return
 
         cover_data = read_cover_art_data(track.path)
+        if not cover_data:
+            # Les pistes CD n'ont pas de fichier réel (donc pas de tags à
+            # lire) : on retombe sur la pochette récupérée en ligne pour
+            # ce lecteur, si elle a été trouvée (voir CdMetadataWorker).
+            cd_location = parse_cd_uri(track.path)
+            if cd_location:
+                drive, _ = cd_location
+                cover_data = get_cached_cover_for_drive(drive)
         if not cover_data:
             return
 
@@ -1305,13 +1698,35 @@ class MainWindow(QMainWindow):
             self.settings_panel.audio_tab.cmb_progress.findData(self._progress_style)
         )
         self.settings_panel.audio_tab.cmb_progress.blockSignals(False)
-        self.progress_stack.setCurrentWidget(
-            self.intensity_progress if self._progress_style != "classic" else self.sld_progress
+
+        # Les CD audio sont lus directement depuis le disque, sans être
+        # chargés en mémoire : impossible d'y calculer une intensité par
+        # segment, donc la barre classique reste forcée tant qu'un CD est
+        # en cours de lecture, quel que soit le style choisi ici (qui
+        # s'appliquera normalement à la prochaine piste non-CD).
+        current_is_cd = bool(
+            self._current_track and parse_cd_uri(getattr(self._current_track, "path", "") or "")
         )
-        self.intensity_progress.set_variant(self._progress_style == "intensity_centered")
+        self._update_progress_stack_for_track(current_is_cd)
         self.intensity_progress.set_theme_colors(self._colors)
         if emit:
             self._schedule_save()
+
+    def _update_progress_stack_for_track(self, is_cd: bool):
+        """
+        Bascule la barre de progression : classique (linéaire) pour les CD
+        audio — lus en flux direct depuis le disque, jamais chargés
+        entièrement en mémoire, donc sans intensité calculable — et la
+        barre choisie par l'utilisateur (classique ou intensité) pour les
+        autres sources, qui elles sont chargées en mémoire.
+        """
+        if is_cd:
+            self.progress_stack.setCurrentWidget(self.sld_progress)
+        else:
+            self.progress_stack.setCurrentWidget(
+                self.intensity_progress if self._progress_style != "classic" else self.sld_progress
+            )
+            self.intensity_progress.set_variant(self._progress_style == "intensity_centered")
 
     def _on_progress_style_changed(self, style: str):
         self._set_progress_style(style)
