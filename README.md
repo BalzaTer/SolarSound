@@ -34,6 +34,31 @@ Tout est en Python, et tout est généré par IA, mais ça marche plutôt bien d
 - Permet la création de playlist, enregistrables et réouvrables à l'aide de fichier .playlist (Boutons `💾 Enregistrer` et `📁 Ouvrir`)
 - Double clic sur un fichier permet de le mettre directement en lecture
 - Le bouton `💿 CD Audio` permet l'ajout de toutes les musiques d'un CD dans la playlist, choix du lecteur lors de l'appui sur le bouton. Il est donc possible de créer une playlist mix avec des audios sur CD, mémoire flash, disque dur, ou même lecteur de floppy disc pourquoi pas !
+  - Titre, artiste, album et pochette sont recherchés automatiquement en ligne à partir de l'identifiant unique du disque (empreinte du sommaire du CD), sans base de données locale à installer : d'abord une correspondance exacte sur MusicBrainz, puis CUETools DB (CTDB) en repli, puis une recherche approximative en dernier recours (rejetée si les durées des pistes ne collent pas, pour éviter d'afficher un mauvais disque)
+
+### Barre de recherche globale
+
+- Zone de recherche au-dessus des onglets : tape un titre, un artiste ou un album et un menu déroulant apparaît en dessous, groupé par sections **Pistes / Albums / Artistes / Playlists**
+- La recherche porte sur toutes les pistes connues (fichiers de la liste de lecture actuelle + pistes indexées de la bibliothèque, voir ci-dessous) et sur les playlists personnalisées
+- Survoler un résultat plus d'1,5 s en joue un court extrait en arrière-plan (aperçu discret, sans toucher à la lecture ou à la liste en cours)
+- Cliquer un résultat : une piste la joue immédiatement, un album/artiste remplace la liste de lecture par ses pistes, une playlist personnalisée bascule vers l'onglet `💾 Mes Playlists` et la sélectionne
+
+### Onglet `💾 Mes Playlists`
+
+- Playlists personnalisées, indépendantes de la liste de lecture en cours : nom, pochette (image importée ou pochette par défaut), et une ou plusieurs **humeurs** parmi `😢 Triste` `💪 Motivation` `🎯 Focus` `😌 Chill` `🎉 Soirée` `🌊 Flow`
+- **3 modes d'affichage**, au choix via les boutons en haut de la colonne de gauche :
+  - `🌳 Arbre` : arborescence dépliable/repliable, dossiers et playlists mêlés
+  - `📋 Détails` : façon explorateur Windows, une ligne par élément (Nom / Type / Pistes), double-clic pour entrer dans un dossier, chemin affiché en haut
+  - `🔲 Icônes` : mêmes règles de navigation que Détails, mais en grosses vignettes carrées
+  - Le mode choisi est mémorisé d'une session à l'autre
+- **Dossiers** : création (`+ 📁 Nouveau dossier`), glisser-déposer d'une playlist entre dossiers ou vers la racine pour la déplacer/réordonner
+- **Import en masse** : glisser un ou plusieurs dossiers depuis l'explorateur de fichiers directement dans la liste crée automatiquement une playlist par dossier
+- Édition d'une playlist : renommer, changer les humeurs, changer la pochette, ajouter des fichiers ou un dossier entier, retirer une piste, réordonner les pistes par glisser-déposer
+- Charger une playlist dans le lecteur : au choix, remplacer la liste de lecture en cours ou l'ajouter à la suite
+- **Génération de Mix "Flow"** : en sélectionnant une ou plusieurs humeurs, génère automatiquement une playlist à partir des pistes correspondantes, avec un ordonnancement pensé pour des transitions harmonieuses (BPM, tonalité, énergie quand ces métadonnées sont disponibles)
+- **🔍 Scanner ma musique** : recherche dans les dossiers de musique configurés (Paramètres → Bibliothèque) les pistes de playlists dont le fichier a été déplacé ou renommé, et corrige automatiquement le chemin en se basant sur la taille du fichier et les métadonnées
+- **💾 Sauvegarder tout** : exporte l'ensemble des playlists et dossiers dans un fichier JSON unique, pour sauvegarde ou transfert vers une autre machine
+- L'indexation de la bibliothèque (utilisée par la recherche globale et le scan ci-dessus) tourne en arrière-plan sans bloquer l'interface : un indicateur discret avec compteur (`⏳ Indexation de la bibliothèque 120/480`) apparaît dans le coin droit de la barre de statut, tout en bas de la fenêtre, et disparaît une fois terminé
 
 ### Onglet `🎬 Vidéo`
 
@@ -99,10 +124,14 @@ Tout est en Python, et tout est généré par IA, mais ça marche plutôt bien d
 - **Couleurs** : chaque élément de l'interface personnalisable + 8 presets
 - **Polices** : police principale + police monospace avec aperçu en temps réel
 - **Audio** : Choix du périphérique de sortie et de la barre de progression (Classique, intensité posée, intensité centrée)
+- **📁 Bibliothèque** : dossiers de musique locaux à indexer, utilisés par la recherche globale (pour retrouver des morceaux pas encore ajoutés à une playlist) et par le scan de pistes manquantes de l'onglet Mes Playlists
+- **🌐 Langue** : interface disponible en français, anglais, allemand, espagnol, italien, portugais, chinois, japonais, corse, néerlandais et hindi ; le changement s'applique en partie à chaud, le reste au redémarrage
 
 ## Installation
 
 L'installation du projet est disponible pour Windows, voir les releases du projet. Il y a un installateur InoSetup, et l'exe de l'appli pour une utilisation portable par ex.
+
+- L'installateur propose une case à cocher optionnelle pour associer les fichiers audio et vidéo pris en charge à SolarSound
 
 ### Au démarrage, l'application vous accueillera avec un joli logo :
 <img width="425" height="296" alt="image" src="https://github.com/user-attachments/assets/14aa71e9-b30e-49b9-90d7-e7aaaf894bcd" />
