@@ -98,6 +98,12 @@ QPushButton#btn_prev, QPushButton#btn_next {
 QPushButton#btn_prev:hover, QPushButton#btn_next:hover {
     background-color: #2a2416;
     border-color: #f5a623;
+    color: #f5a623;
+}
+
+QPushButton#btn_prev:pressed, QPushButton#btn_next:pressed {
+    background-color: #f5a623;
+    color: #0f0d0a;
 }
 
 QPushButton#btn_stop {
@@ -110,6 +116,17 @@ QPushButton#btn_stop {
     max-width: 36px;
     max-height: 36px;
     border: 1px solid #3d3420;
+}
+
+QPushButton#btn_stop:hover {
+    background-color: #2a2416;
+    border-color: #f5a623;
+    color: #f5a623;
+}
+
+QPushButton#btn_stop:pressed {
+    background-color: #f5a623;
+    color: #0f0d0a;
 }
 
 /* ── Sliders ── */

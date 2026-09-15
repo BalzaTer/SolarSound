@@ -5,8 +5,9 @@ from PyQt6.QtWidgets import (
     QFileDialog, QDialogButtonBox, QWidget,
     QRadioButton, QButtonGroup
 )
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap, QPainter
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtSvg import QSvgRenderer
 import os
 
 try:
@@ -83,6 +84,23 @@ class MoodTagsDialog(QDialog):
 class PlaylistDialog(QDialog):
     """Dialog de création / édition d'une playlist personnalisée"""
 
+    @staticmethod
+    def _default_cover_pixmap(size):
+        default_cover_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            "defaultcover.svg",
+        )
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        renderer = QSvgRenderer(default_cover_path)
+        if not renderer.isValid():
+            return pixmap
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return pixmap
+
     def __init__(self, name="", moods=None, cover_path=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Playlist personnalisée")
@@ -106,7 +124,8 @@ class PlaylistDialog(QDialog):
             "border: 1px solid #5a4a28; background: rgba(0,0,0,0.15);"
         )
         self.lbl_cover_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_cover_preview.setText("🖼")
+        self.lbl_cover_preview.setPixmap(self._default_cover_pixmap(QSize(64, 64)))
+        self.lbl_cover_preview.setText("")
         cover_row.addWidget(self.lbl_cover_preview)
 
         self.btn_choose_cover = QPushButton("Choisir une image…")

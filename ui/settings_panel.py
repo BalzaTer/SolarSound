@@ -17,6 +17,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor, QFont, QKeySequence, QPalette
 
+try:
+    from ..core.i18n import tr, LANGUAGES, get_language, set_language
+except (ImportError, ModuleNotFoundError):
+    from core.i18n import tr, LANGUAGES, get_language, set_language
+
 
 # ── Données de configuration ─────────────────────────────────────────────────
 
@@ -606,6 +611,50 @@ class LibraryTab(QWidget):
         self.list_folders.addItems(folders or [])
 
 
+class LanguageTab(QWidget):
+    """Choix de la langue de l'interface."""
+
+    language_changed = pyqtSignal(str)
+
+    def __init__(self, current_language: str = "fr", parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+
+        row = QHBoxLayout()
+        self.lbl = QLabel(tr("settings.language.label"))
+        row.addWidget(self.lbl)
+
+        self.combo = QComboBox()
+        self._codes = list(LANGUAGES.keys())
+        for code in self._codes:
+            self.combo.addItem(LANGUAGES[code], code)
+        if current_language in self._codes:
+            self.combo.setCurrentIndex(self._codes.index(current_language))
+        row.addWidget(self.combo)
+        row.addStretch()
+        layout.addLayout(row)
+
+        self.lbl_notice = QLabel(tr("settings.language.restart_notice"))
+        self.lbl_notice.setStyleSheet("color: gray; font-size: 11px;")
+        self.lbl_notice.setWordWrap(True)
+        layout.addWidget(self.lbl_notice)
+        layout.addStretch()
+
+        self.combo.currentIndexChanged.connect(self._on_changed)
+
+    def _on_changed(self, index: int):
+        if 0 <= index < len(self._codes):
+            self.language_changed.emit(self._codes[index])
+
+    def get_language(self) -> str:
+        idx = self.combo.currentIndex()
+        return self._codes[idx] if 0 <= idx < len(self._codes) else "fr"
+
+    def retranslate(self):
+        self.lbl.setText(tr("settings.language.label"))
+        self.lbl_notice.setText(tr("settings.language.restart_notice"))
+
+
 class SettingsPanel(QWidget):
     """Panneau de paramètres avec onglets audio, raccourcis, couleurs et polices."""
 
@@ -615,48 +664,64 @@ class SettingsPanel(QWidget):
     colors_changed    = pyqtSignal(dict)
     font_changed      = pyqtSignal(dict)
     folders_changed   = pyqtSignal(list)
+    language_changed  = pyqtSignal(str)
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
                  output_device=None, progress_style="classic",
-                 library_folders: list = None, parent=None):
+                 library_folders: list = None, language: str = "fr", parent=None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
         font_cfg  = font_cfg  or dict(DEFAULT_FONT)
 
         self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device,
-                        progress_style, library_folders or [])
+                        progress_style, library_folders or [], language)
 
     def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device,
-                  progress_style, library_folders):
+                  progress_style, library_folders, language):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        tabs = QTabWidget()
+        self._tabs = QTabWidget()
+        tabs = self._tabs
 
         self.audio_tab = AudioTab(output_devices, output_device, progress_style)
         self.audio_tab.output_changed.connect(self.output_changed)
         self.audio_tab.progress_style_changed.connect(self.progress_style_changed)
-        tabs.addTab(self.audio_tab, "🔉  Audio")
+        tabs.addTab(self.audio_tab, tr("settings.tab.audio"))
 
         self.shortcuts_tab = ShortcutsTab(shortcuts)
         self.shortcuts_tab.shortcuts_changed.connect(self.shortcuts_changed)
-        tabs.addTab(self.shortcuts_tab, "⌨  Raccourcis")
+        tabs.addTab(self.shortcuts_tab, tr("settings.tab.shortcuts"))
 
         self.colors_tab = ColorsTab(colors)
         self.colors_tab.colors_changed.connect(self.colors_changed)
-        tabs.addTab(self.colors_tab, "🎨  Couleurs")
+        tabs.addTab(self.colors_tab, tr("settings.tab.colors"))
 
         self.fonts_tab = FontsTab(font_cfg)
         self.fonts_tab.font_changed.connect(self.font_changed)
-        tabs.addTab(self.fonts_tab, "🔤  Polices")
+        tabs.addTab(self.fonts_tab, tr("settings.tab.fonts"))
 
         self.library_tab = LibraryTab(library_folders)
         self.library_tab.folders_changed.connect(self.folders_changed)
-        tabs.addTab(self.library_tab, "📁  Bibliothèque")
+        tabs.addTab(self.library_tab, tr("settings.tab.library"))
+
+        self.language_tab = LanguageTab(language)
+        self.language_tab.language_changed.connect(self.language_changed)
+        tabs.addTab(self.language_tab, tr("settings.tab.language"))
 
         layout.addWidget(tabs)
+
+    def retranslate_ui(self):
+        """Remet à jour les textes de ce panneau après un changement de langue à chaud."""
+        self._tabs.setTabText(0, tr("settings.tab.audio"))
+        self._tabs.setTabText(1, tr("settings.tab.shortcuts"))
+        self._tabs.setTabText(2, tr("settings.tab.colors"))
+        self._tabs.setTabText(3, tr("settings.tab.fonts"))
+        self._tabs.setTabText(4, tr("settings.tab.library"))
+        self._tabs.setTabText(5, tr("settings.tab.language"))
+        self.language_tab.retranslate()
 
     def get_shortcuts(self) -> dict:
         return self.shortcuts_tab.get_shortcuts()

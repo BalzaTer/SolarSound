@@ -4,10 +4,11 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QTreeWidget, QTreeWidgetItem, QPushButton, QLabel, QFileDialog,
     QMessageBox, QFrame, QSizePolicy, QAbstractItemView, QInputDialog,
-    QSplitter, QMenu
+    QSplitter, QMenu, QStackedWidget, QButtonGroup, QStyle
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QIcon, QAction, QKeySequence
+from PyQt6.QtGui import QPixmap, QIcon, QAction, QKeySequence, QPainter
+from PyQt6.QtSvg import QSvgRenderer
 import os
 from datetime import datetime
 
@@ -16,11 +17,13 @@ try:
     from .progress_dialog import run_with_progress
     from ..core.playlist_manager import PlaylistManager
     from ..audio.metadata import format_duration, read_cover_art_data
+    from ..core.i18n import tr
 except (ImportError, ModuleNotFoundError):
     from ui.playlist_dialogs import PlaylistDialog, PlaylistActionDialog, MOOD_ICONS
     from ui.progress_dialog import run_with_progress
     from core.playlist_manager import PlaylistManager
     from audio.metadata import format_duration, read_cover_art_data
+    from core.i18n import tr
 
 
 ROLE = Qt.ItemDataRole.UserRole
@@ -111,6 +114,197 @@ class PlaylistTree(QTreeWidget):
         self.internal_order_changed.emit()
 
 
+class PlaylistBrowserView(QWidget):
+    """
+    Vue "à plat" d'un seul niveau de dossier, façon explorateur Windows
+    (mode "Détails" ou "Icônes") : une barre de chemin en haut, double-clic
+    pour entrer dans un dossier, simple clic pour sélectionner une
+    playlist ou un dossier.
+
+    Comme les dossiers de "Mes Playlists" ne peuvent pas être imbriqués
+    (un dossier ne contient que des playlists), il n'y a qu'un seul
+    niveau à parcourir : la racine, ou l'intérieur d'un dossier.
+    """
+
+    selection_changed = pyqtSignal(object)      # dict {"type","id"} ou None
+    navigation_changed = pyqtSignal(object)      # id du dossier affiché (None = racine)
+    context_menu_requested = pyqtSignal(object)  # QPoint global, prêt pour menu.exec()
+
+    def __init__(self, manager: PlaylistManager, mode: str, get_cover_icon, parent=None):
+        super().__init__(parent)
+        self.manager = manager
+        self.mode = mode  # "details" ou "icons"
+        self._get_cover_icon = get_cover_icon
+        self._folder_id = None
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 4, 0, 0)
+        layout.setSpacing(4)
+
+        path_row = QHBoxLayout()
+        self.btn_up = QPushButton("⬆")
+        self.btn_up.setFixedWidth(28)
+        self.btn_up.setToolTip(tr("playlists.up_tooltip"))
+        self.btn_up.setEnabled(False)
+        self.btn_up.clicked.connect(lambda: self.navigate_to(None))
+        path_row.addWidget(self.btn_up)
+
+        self.lbl_path = QLabel(tr("playlists.root"))
+        self.lbl_path.setStyleSheet("font-weight: bold;")
+        path_row.addWidget(self.lbl_path)
+        path_row.addStretch()
+        layout.addLayout(path_row)
+
+        folder_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
+        self._folder_icon = folder_icon
+
+        if self.mode == "details":
+            self.view = QTreeWidget()
+            self.view.setColumnCount(3)
+            self.view.setHeaderLabels([tr("playlists.col.name"), tr("playlists.col.type"), tr("playlists.col.tracks")])
+            self.view.setRootIsDecorated(False)
+            self.view.setUniformRowHeights(True)
+            self.view.setIconSize(QSize(24, 24))
+        else:
+            self.view = QListWidget()
+            self.view.setViewMode(QListWidget.ViewMode.IconMode)
+            self.view.setIconSize(QSize(72, 72))
+            self.view.setGridSize(QSize(120, 110))
+            self.view.setResizeMode(QListWidget.ResizeMode.Adjust)
+            self.view.setMovement(QListWidget.Movement.Static)
+            self.view.setWordWrap(True)
+
+        self.view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.view.itemSelectionChanged.connect(self._on_selection_changed)
+        self.view.itemDoubleClicked.connect(self._on_item_activated)
+        self.view.customContextMenuRequested.connect(self._on_context_menu)
+        layout.addWidget(self.view)
+
+    def retranslate(self):
+        """En-têtes et infobulle : posés une seule fois dans _build_ui,
+        donc à remettre explicitement après un changement de langue."""
+        self.btn_up.setToolTip(tr("playlists.up_tooltip"))
+        if self.mode == "details":
+            self.view.setHeaderLabels([
+                tr("playlists.col.name"), tr("playlists.col.type"), tr("playlists.col.tracks")
+            ])
+        self.refresh()
+
+    # ── Navigation ───────────────────────────────────────────────────
+    def navigate_to(self, folder_id):
+        if folder_id is not None and not self.manager.get_folder(folder_id):
+            folder_id = None
+        self._folder_id = folder_id
+        self.refresh()
+        self.navigation_changed.emit(folder_id)
+        self._on_selection_changed()
+
+    def current_folder_id(self):
+        return self._folder_id
+
+    def set_current_folder_silent(self, folder_id):
+        """Change le dossier courant sans reconstruire ni émettre de signal (sync interne)."""
+        self._folder_id = folder_id
+
+    # ── Rafraîchissement ────────────────────────────────────────────
+    def refresh(self):
+        if self._folder_id is not None and not self.manager.get_folder(self._folder_id):
+            self._folder_id = None  # le dossier parcouru a été supprimé entre-temps
+
+        if self._folder_id is None:
+            self.lbl_path.setText(tr("playlists.root"))
+            self.btn_up.setEnabled(False)
+        else:
+            folder = self.manager.get_folder(self._folder_id)
+            self.lbl_path.setText(f'{tr("playlists.root")} ▸ 📁 {folder.name}')
+            self.btn_up.setEnabled(True)
+
+        if self.mode == "details":
+            self._rebuild_details()
+        else:
+            self._rebuild_icons()
+
+    def _current_entries(self):
+        """Liste (type, objet) des entrées à afficher dans le dossier courant."""
+        entries = []
+        if self._folder_id is None:
+            folders = sorted(self.manager.get_all_folders(), key=lambda f: f.order)
+            entries.extend(("folder", f) for f in folders)
+            playlists = [p for p in self.manager.get_all_playlists() if not p.folder_id]
+        else:
+            playlists = [p for p in self.manager.get_all_playlists() if p.folder_id == self._folder_id]
+        entries.extend(("playlist", p) for p in sorted(playlists, key=lambda p: p.order))
+        return entries
+
+    def _rebuild_details(self):
+        self.view.blockSignals(True)
+        self.view.clear()
+        for entry_type, obj in self._current_entries():
+            if entry_type == "folder":
+                item = QTreeWidgetItem([f"{obj.name}", tr("playlists.type.folder"), ""])
+                item.setIcon(0, self._folder_icon)
+                item.setData(0, ROLE, {"type": "folder", "id": obj.id})
+            else:
+                item = QTreeWidgetItem([obj.name or tr("playlists.unnamed"), tr("playlists.type.playlist"), str(len(obj.tracks))])
+                item.setData(0, ROLE, {"type": "playlist", "id": obj.id})
+                icon = self._get_cover_icon(obj)
+                if icon:
+                    item.setIcon(0, icon)
+            self.view.addTopLevelItem(item)
+        for col in range(self.view.columnCount()):
+            self.view.resizeColumnToContents(col)
+        self.view.blockSignals(False)
+
+    def _rebuild_icons(self):
+        self.view.blockSignals(True)
+        self.view.clear()
+        for entry_type, obj in self._current_entries():
+            if entry_type == "folder":
+                item = QListWidgetItem(self._folder_icon, obj.name)
+                item.setData(ROLE, {"type": "folder", "id": obj.id})
+            else:
+                icon = self._get_cover_icon(obj) or QIcon()
+                item = QListWidgetItem(icon, obj.name or tr("playlists.unnamed"))
+                item.setData(ROLE, {"type": "playlist", "id": obj.id})
+            item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
+            self.view.addItem(item)
+        self.view.blockSignals(False)
+
+    # ── Sélection / activation ───────────────────────────────────────
+    def _item_data(self, item):
+        if item is None:
+            return None
+        return (item.data(0, ROLE) if self.mode == "details" else item.data(ROLE)) or None
+
+    def _on_selection_changed(self):
+        self.selection_changed.emit(self._item_data(self.view.currentItem()))
+
+    def _on_item_activated(self, item):
+        data = self._item_data(item)
+        if data and data.get("type") == "folder":
+            self.navigate_to(data.get("id"))
+
+    def _on_context_menu(self, pos):
+        item = self.view.itemAt(pos)
+        if item is not None:
+            self.view.setCurrentItem(item)
+        self.context_menu_requested.emit(self.view.viewport().mapToGlobal(pos))
+
+    def select_id(self, entry_type: str, entry_id: str):
+        count = self.view.topLevelItemCount() if self.mode == "details" else self.view.count()
+        for i in range(count):
+            item = self.view.topLevelItem(i) if self.mode == "details" else self.view.item(i)
+            data = self._item_data(item) or {}
+            if data.get("type") == entry_type and data.get("id") == entry_id:
+                self.view.setCurrentItem(item)
+                return
+        # Rien à sélectionner (élément introuvable dans ce dossier) : vider la sélection.
+        self.view.setCurrentItem(None)
+
+
 class PlaylistManagerPanel(QWidget):
     """Gestionnaire de playlists personnalisées : dossiers + playlists + détails + CRUD"""
 
@@ -124,6 +318,8 @@ class PlaylistManagerPanel(QWidget):
         self._get_library_folders = get_library_folders or (lambda: [])
         self._current_playlist_id = None
         self._current_folder_id = None  # dossier sélectionné (item "dossier")
+        self._view_mode = "tree"        # "tree" | "details" | "icons"
+        self._browse_folder_id = None   # dossier parcouru dans les vues "à plat"
         self._setup_ui()
         self._connect_signals()
         self.refresh_playlists()
@@ -152,6 +348,21 @@ class PlaylistManagerPanel(QWidget):
         hint.setWordWrap(True)
         left_col.addWidget(hint)
 
+        # ── Sélecteur de mode d'affichage (Arbre / Détails / Icônes) ─
+        view_mode_row = QHBoxLayout()
+        self.btn_view_tree = QPushButton(tr("playlists.view.tree"))
+        self.btn_view_details = QPushButton(tr("playlists.view.details"))
+        self.btn_view_icons = QPushButton(tr("playlists.view.icons"))
+        for btn in (self.btn_view_tree, self.btn_view_details, self.btn_view_icons):
+            btn.setCheckable(True)
+            view_mode_row.addWidget(btn)
+        self.btn_view_tree.setChecked(True)
+        self._view_mode_group = QButtonGroup(self)
+        self._view_mode_group.setExclusive(True)
+        for btn in (self.btn_view_tree, self.btn_view_details, self.btn_view_icons):
+            self._view_mode_group.addButton(btn)
+        left_col.addLayout(view_mode_row)
+
         self.tree_playlists = PlaylistTree()
         self.tree_playlists.setIconSize(QSize(48, 48))
         self.tree_playlists.setStyleSheet(
@@ -159,11 +370,21 @@ class PlaylistManagerPanel(QWidget):
             "QTreeWidget::item { padding: 6px 4px; }"
         )
         self.tree_playlists.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree_playlists.addActions([
-            self.act_new, self.act_new_folder, self.act_delete, self.act_duplicate,
-            self.act_move_up, self.act_move_down, self.act_move_to_folder,
-        ])
-        left_col.addWidget(self.tree_playlists)
+
+        self.view_details = PlaylistBrowserView(self.manager, "details", self._cover_icon, self)
+        self.view_icons = PlaylistBrowserView(self.manager, "icons", self._cover_icon, self)
+
+        for view in (self.tree_playlists, self.view_details.view, self.view_icons.view):
+            view.addActions([
+                self.act_new, self.act_new_folder, self.act_delete, self.act_duplicate,
+                self.act_move_up, self.act_move_down, self.act_move_to_folder,
+            ])
+
+        self.stack_views = QStackedWidget()
+        self.stack_views.addWidget(self.tree_playlists)
+        self.stack_views.addWidget(self.view_details)
+        self.stack_views.addWidget(self.view_icons)
+        left_col.addWidget(self.stack_views)
 
         left_buttons_row = QHBoxLayout()
         self.btn_new = QPushButton("＋ Nouvelle")
@@ -202,7 +423,8 @@ class PlaylistManagerPanel(QWidget):
             "border: 1px solid #5a4a28; background: rgba(0,0,0,0.15);"
         )
         self.lbl_cover.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_cover.setText("🖼")
+        self.lbl_cover.setPixmap(self._default_cover_pixmap(QSize(80, 80)))
+        self.lbl_cover.setText("")
         header_row.addWidget(self.lbl_cover)
 
         info_col = QVBoxLayout()
@@ -296,11 +518,9 @@ class PlaylistManagerPanel(QWidget):
         ):
             act.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
 
-    def _show_tree_context_menu(self, pos):
-        item = self.tree_playlists.itemAt(pos)
-        if item is not None:
-            self.tree_playlists.setCurrentItem(item)
-
+    def _build_context_menu(self) -> QMenu:
+        """Construit le menu contextuel (partagé par les 3 vues) en fonction
+        de la sélection courante (`_current_playlist_id` / `_current_folder_id`)."""
         has_playlist = self._get_current_playlist() is not None
         has_folder = self._get_current_folder() is not None
         has_selection = has_playlist or has_folder
@@ -320,7 +540,16 @@ class PlaylistManagerPanel(QWidget):
         menu.addAction(self.act_move_up)
         menu.addAction(self.act_move_down)
         menu.addAction(self.act_move_to_folder)
-        menu.exec(self.tree_playlists.viewport().mapToGlobal(pos))
+        return menu
+
+    def _show_tree_context_menu(self, pos):
+        item = self.tree_playlists.itemAt(pos)
+        if item is not None:
+            self.tree_playlists.setCurrentItem(item)
+        self._build_context_menu().exec(self.tree_playlists.viewport().mapToGlobal(pos))
+
+    def _show_flat_context_menu(self, global_pos):
+        self._build_context_menu().exec(global_pos)
 
     def _connect_signals(self):
         self.tree_playlists.currentItemChanged.connect(self._on_selection_changed)
@@ -329,6 +558,15 @@ class PlaylistManagerPanel(QWidget):
         self.tree_playlists.customContextMenuRequested.connect(self._show_tree_context_menu)
         self.tree_playlists.itemExpanded.connect(lambda item: self._on_folder_expansion_changed(item, True))
         self.tree_playlists.itemCollapsed.connect(lambda item: self._on_folder_expansion_changed(item, False))
+
+        for view in (self.view_details, self.view_icons):
+            view.selection_changed.connect(self._apply_selection)
+            view.navigation_changed.connect(self._on_flat_navigation_changed)
+            view.context_menu_requested.connect(self._show_flat_context_menu)
+
+        self.btn_view_tree.clicked.connect(lambda: self._on_view_mode_changed("tree"))
+        self.btn_view_details.clicked.connect(lambda: self._on_view_mode_changed("details"))
+        self.btn_view_icons.clicked.connect(lambda: self._on_view_mode_changed("icons"))
 
         self.btn_new.clicked.connect(self._on_new)
         self.btn_new_folder.clicked.connect(self._on_new_folder)
@@ -345,6 +583,68 @@ class PlaylistManagerPanel(QWidget):
     def _set_details_enabled(self, enabled: bool):
         for w in (self.btn_edit, self.btn_add_files, self.btn_add_folder, self.btn_load):
             w.setEnabled(enabled)
+
+    def retranslate_ui(self):
+        """Textes de ce panneau à remettre à jour après un changement de langue."""
+        self.btn_view_tree.setText(tr("playlists.view.tree"))
+        self.btn_view_details.setText(tr("playlists.view.details"))
+        self.btn_view_icons.setText(tr("playlists.view.icons"))
+        for view in (self.view_details, self.view_icons):
+            view.retranslate()
+
+    # ── Mode d'affichage (Arbre / Détails / Icônes) ─────────────────
+    def get_view_mode(self) -> str:
+        return self._view_mode
+
+    def set_view_mode(self, mode: str):
+        """Applique un mode d'affichage (utilisé aussi à la restauration de session)."""
+        if mode not in ("tree", "details", "icons"):
+            mode = "tree"
+        btn = {
+            "tree": self.btn_view_tree,
+            "details": self.btn_view_details,
+            "icons": self.btn_view_icons,
+        }[mode]
+        btn.setChecked(True)
+        self._on_view_mode_changed(mode)
+
+    def _on_view_mode_changed(self, mode: str):
+        self._view_mode = mode
+
+        if mode == "tree":
+            self.stack_views.setCurrentWidget(self.tree_playlists)
+            return
+
+        view = self.view_details if mode == "details" else self.view_icons
+
+        # Retrouver où se trouve la sélection courante pour que la vue "à
+        # plat" affiche le bon dossier au moment du changement de mode.
+        if self._current_playlist_id:
+            playlist = self.manager.get_playlist(self._current_playlist_id)
+            target_folder = playlist.folder_id if playlist else self._browse_folder_id
+        elif self._current_folder_id:
+            target_folder = None  # un dossier sélectionné est listé à la racine
+        else:
+            target_folder = self._browse_folder_id
+
+        if view.current_folder_id() != target_folder:
+            view.navigate_to(target_folder)
+        self._browse_folder_id = target_folder
+
+        if self._current_playlist_id:
+            view.select_id("playlist", self._current_playlist_id)
+        elif self._current_folder_id:
+            view.select_id("folder", self._current_folder_id)
+
+        self.stack_views.setCurrentWidget(view)
+
+    def _on_flat_navigation_changed(self, folder_id):
+        """Garde les 2 vues "à plat" synchronisées sur le même dossier parcouru,
+        pour ne pas revenir à la racine en changeant simplement de mode d'affichage."""
+        self._browse_folder_id = folder_id
+        other = self.view_icons if self.sender() is self.view_details else self.view_details
+        if other.current_folder_id() != folder_id:
+            other.navigate_to(folder_id)
 
     # ── Rafraîchissement de l'arbre ────────────────────────────────
     def refresh_playlists(self):
@@ -411,6 +711,16 @@ class PlaylistManagerPanel(QWidget):
                 self._current_folder_id = None
                 self._refresh_details(None)
 
+        # Garder les vues "à plat" synchronisées avec les données, en
+        # conservant leur dossier parcouru.
+        self.view_details.refresh()
+        self.view_icons.refresh()
+        if self._view_mode != "tree":
+            if self._current_playlist_id and self.manager.get_playlist(self._current_playlist_id):
+                self._select_playlist_id(self._current_playlist_id)
+            elif self._current_folder_id and self.manager.get_folder(self._current_folder_id):
+                self._select_folder_id(self._current_folder_id)
+
     def _make_playlist_item(self, playlist):
         item = QTreeWidgetItem([playlist.name or "(Sans nom)"])
         item.setData(0, ROLE, {"type": "playlist", "id": playlist.id})
@@ -420,6 +730,24 @@ class PlaylistManagerPanel(QWidget):
         if icon:
             item.setIcon(0, icon)
         return item
+
+    @staticmethod
+    def _default_cover_pixmap(size):
+        """Retourne la couverture par défaut au format SVG."""
+        default_cover_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            "defaultcover.svg",
+        )
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        renderer = QSvgRenderer(default_cover_path)
+        if not renderer.isValid():
+            return pixmap
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return pixmap
 
     def _cover_icon(self, playlist):
         """
@@ -440,7 +768,7 @@ class PlaylistManagerPanel(QWidget):
                 if pixmap.loadFromData(cover_data):
                     return QIcon(pixmap)
 
-        return None
+        return QIcon(self._default_cover_pixmap(QSize(80, 80)))
 
     # ── Sélection ──────────────────────────────────────────────────
     def _on_folder_expansion_changed(self, item, expanded: bool):
@@ -451,7 +779,11 @@ class PlaylistManagerPanel(QWidget):
             self.manager.set_folder_expanded(data["id"], expanded)
 
     def _on_selection_changed(self, current, previous):
-        data = current.data(0, ROLE) if current else None
+        self._apply_selection(current.data(0, ROLE) if current else None)
+
+    def _apply_selection(self, data):
+        """Point d'entrée unique de la sélection, quelle que soit la vue active
+        (arbre, détails ou icônes)."""
         data = data or {}
 
         if data.get("type") == "playlist":
@@ -474,8 +806,8 @@ class PlaylistManagerPanel(QWidget):
             self.lbl_name.setText("—")
             self.lbl_moods.setText("")
             self.lbl_track_count.setText("")
-            self.lbl_cover.setPixmap(QPixmap())
-            self.lbl_cover.setText("🖼")
+            self.lbl_cover.setPixmap(self._default_cover_pixmap(QSize(80, 80)))
+            self.lbl_cover.setText("")
             self._set_details_enabled(False)
             return
 
@@ -495,8 +827,8 @@ class PlaylistManagerPanel(QWidget):
             self.lbl_cover.setPixmap(icon.pixmap(80, 80))
             self.lbl_cover.setText("")
         else:
-            self.lbl_cover.setPixmap(QPixmap())
-            self.lbl_cover.setText("🖼")
+            self.lbl_cover.setPixmap(self._default_cover_pixmap(QSize(80, 80)))
+            self.lbl_cover.setText("")
 
         for i, track in enumerate(playlist.tracks):
             dur = format_duration(track.duration) if track.duration else "--:--"
@@ -515,6 +847,8 @@ class PlaylistManagerPanel(QWidget):
             playlist = self.manager.get_playlist(self._current_playlist_id)
             if playlist:
                 return playlist.folder_id
+        if self._view_mode != "tree":
+            return self._browse_folder_id
         return None
 
     def _on_new(self):
@@ -847,10 +1181,27 @@ class PlaylistManagerPanel(QWidget):
         return self.manager.get_folder(self._current_folder_id)
 
     def _select_playlist_id(self, playlist_id: str):
-        self._walk_and_select(lambda d: d.get("type") == "playlist" and d.get("id") == playlist_id)
+        if self._view_mode == "tree":
+            self._walk_and_select(lambda d: d.get("type") == "playlist" and d.get("id") == playlist_id)
+            return
+        playlist = self.manager.get_playlist(playlist_id)
+        if not playlist:
+            return
+        view = self.view_details if self._view_mode == "details" else self.view_icons
+        if view.current_folder_id() != playlist.folder_id:
+            view.navigate_to(playlist.folder_id)
+        self._browse_folder_id = playlist.folder_id
+        view.select_id("playlist", playlist_id)
 
     def _select_folder_id(self, folder_id: str):
-        self._walk_and_select(lambda d: d.get("type") == "folder" and d.get("id") == folder_id)
+        if self._view_mode == "tree":
+            self._walk_and_select(lambda d: d.get("type") == "folder" and d.get("id") == folder_id)
+            return
+        view = self.view_details if self._view_mode == "details" else self.view_icons
+        if view.current_folder_id() is not None:
+            view.navigate_to(None)
+        self._browse_folder_id = None
+        view.select_id("folder", folder_id)
 
     def _walk_and_select(self, predicate):
         for i in range(self.tree_playlists.topLevelItemCount()):

@@ -1,6 +1,7 @@
 """Fenêtre principale SolarSound"""
 
 import os
+import time
 import sys
 import random
 from typing import List
@@ -37,11 +38,12 @@ try:
     from ..audio.cd import parse_cd_uri
     from ..audio.cd_metadata import get_cached_cover_for_drive
     from ..core.library_scanner import scan_library_folders
-    from .progress_dialog import run_with_progress
+    from .progress_dialog import TaskWorker
     from ..audio.preview_player import PreviewPlayer
     from ..audio.metadata import format_duration, read_metadata, read_cover_art_data
     from ..core.error_logging import append_error_log
     from ..core.volume import gain_to_slider_value, slider_to_gain
+    from ..core.i18n import tr, set_language, get_language, DEFAULT_LANGUAGE
 except (ImportError, ModuleNotFoundError):
     # If this module is run directly (python ui/main_window.py), absolute
     # imports like "ui.settings_panel" may fail because the package root
@@ -70,11 +72,12 @@ except (ImportError, ModuleNotFoundError):
     from audio.cd import parse_cd_uri
     from audio.cd_metadata import get_cached_cover_for_drive
     from core.library_scanner import scan_library_folders
-    from ui.progress_dialog import run_with_progress
+    from ui.progress_dialog import TaskWorker
     from audio.preview_player import PreviewPlayer
     from audio.metadata import format_duration, read_metadata, read_cover_art_data
     from core.error_logging import append_error_log
     from core.volume import gain_to_slider_value, slider_to_gain
+    from core.i18n import tr, set_language, get_language, DEFAULT_LANGUAGE
 
 
 class DetachableTabBar(QTabBar):
@@ -280,6 +283,7 @@ class MainWindow(QMainWindow):
         # servent à retrouver les pistes déplacées/renommées.
         self._library_folders: List[str] = []
         self._library_index_cache: list = []
+        self._library_index_last_ui_update = 0.0
         self._preview_player = PreviewPlayer()
 
         # Géométrie normale (hors minimisé) — mise à jour via changeEvent/moveEvent/resizeEvent
@@ -313,6 +317,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 680)
         self.setStyleSheet(build_stylesheet(self._colors, self._font_cfg))
 
+        # Charger la session tôt pour appliquer la langue choisie AVANT de
+        # construire l'UI : sinon les onglets seraient créés en français puis
+        # retraduits, ce qui se voit au démarrage.
+        session = self._session.load()
+        set_language(getattr(session, "language", DEFAULT_LANGUAGE))
+
         self._build_ui()
         # Autoriser le glisser-déposer sur la fenêtre principale
         self.setAcceptDrops(True)
@@ -320,8 +330,7 @@ class MainWindow(QMainWindow):
         self._build_status_bar()
         self._setup_timer()
 
-        # Restaurer la session
-        session = self._session.load()
+        # Restaurer le reste de la session
         self._restore_session(session)
 
         # Fichiers ouverts via "Lire avec" ou argument CLI
@@ -522,6 +531,8 @@ class MainWindow(QMainWindow):
         state.colors    = self._colors
         state.font_cfg  = self._font_cfg
         state.library_folders = self._library_folders
+        state.playlist_view_mode = self.playlist_manager_panel.get_view_mode()
+        state.language = get_language()
         self._session.save(state)
 
     def _restore_session(self, state: SessionState):
@@ -564,6 +575,7 @@ class MainWindow(QMainWindow):
         self._library_folders = getattr(state, "library_folders", []) or []
         self.settings_panel.library_tab.set_folders(self._library_folders)
         self._rebuild_library_index()
+        self.playlist_manager_panel.set_view_mode(getattr(state, "playlist_view_mode", "tree"))
 
         # ── Config spatiale ──────────────────────────────────────────
         if state.spatial_config:
@@ -1014,14 +1026,14 @@ class MainWindow(QMainWindow):
         self.playlist_widget.playlist_changed.connect(self._on_playlist_changed)
         self.playlist_widget.mood_selected.connect(self._on_mood_selected)
         self.playlist_widget.open_playlist_manager.connect(self._on_open_playlist_manager)
-        tabs.addTab(self.playlist_widget, "📋  Playlist")
+        tabs.addTab(self.playlist_widget, tr("tab.playlist"))
 
         # ── Lecteur Vidéo (prioritaire, premier onglet clé) ───────────
         self.video_window = VideoWindow(self.video_engine, self._icons_dir)
         self.video_window.request_prev.connect(self._on_prev)
         self.video_window.request_next.connect(self._on_next)
         self.video_window.request_stop.connect(self._on_stop)
-        tabs.addTab(self.video_window, "🎬  Vidéo")
+        tabs.addTab(self.video_window, tr("tab.video"))
 
         # ── Mes Playlists (playlists personnalisées avec humeurs) ─────
         self.playlist_manager_panel = PlaylistManagerPanel(
@@ -1029,28 +1041,28 @@ class MainWindow(QMainWindow):
         )
         self.playlist_manager_panel.load_requested.connect(self._on_load_custom_playlist)
         self._playlists_tab_index = 2
-        tabs.insertTab(self._playlists_tab_index, self.playlist_manager_panel, "💾  Mes Playlists")
+        tabs.insertTab(self._playlists_tab_index, self.playlist_manager_panel, tr("tab.my_playlists"))
 
         # ── Spatialisation ────────────────────────────────────────────
         self.spatial_panel = SpatialPanel(self.engine.config)
         self.spatial_panel.config_changed.connect(self._on_spatial_config_changed)
-        tabs.addTab(self.spatial_panel, "🔊  5.1")
+        tabs.addTab(self.spatial_panel, tr("tab.surround"))
 
         # ── Egaliseur ────────────────────────────────────────────────
         self.equalizer_panel = EqualizerPanel(self.engine.equalizer_config.__dict__)
         self.equalizer_panel.config_changed.connect(self._on_equalizer_config_changed)
-        tabs.addTab(self.equalizer_panel, "〽  Égaliseur")
+        tabs.addTab(self.equalizer_panel, tr("tab.equalizer"))
 
         # ── Rotation ─────────────────────────────────────────────────
         self.rotation_panel = RotationPanel(self.engine.config)
         self.rotation_panel.config_changed.connect(self._on_spatial_config_changed)
-        tabs.addTab(self.rotation_panel, "🌀  Rotation")
+        tabs.addTab(self.rotation_panel, tr("tab.rotation"))
 
         # ── Vinyle ────────────────────────────────────────────────────
         if self.engine.vinyl:
             self.vinyl_panel = VinylPanel(self.engine.vinyl.config)
             self.vinyl_panel.config_changed.connect(self._on_vinyl_config_changed)
-            tabs.addTab(self.vinyl_panel, "💿  Vinyle")
+            tabs.addTab(self.vinyl_panel, tr("tab.vinyl"))
         else:
             self.vinyl_panel = None
 
@@ -1058,7 +1070,7 @@ class MainWindow(QMainWindow):
         self.settings_panel = SettingsPanel(
             self._shortcuts, self._colors, self._font_cfg,
             self.engine.output_devices(), self.engine.output_device, self._progress_style,
-            self._library_folders
+            self._library_folders, get_language()
         )
         self.settings_panel.output_changed.connect(self._on_output_changed)
         self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
@@ -1066,7 +1078,8 @@ class MainWindow(QMainWindow):
         self.settings_panel.colors_changed.connect(self._on_colors_changed)
         self.settings_panel.font_changed.connect(self._on_font_changed)
         self.settings_panel.folders_changed.connect(self._on_library_folders_changed)
-        tabs.addTab(self.settings_panel, "⚙  Paramètres")
+        self.settings_panel.language_changed.connect(self._on_language_changed)
+        tabs.addTab(self.settings_panel, tr("tab.settings"))
 
         # Activer l'onglet vidéo par défaut (index 1)
         tabs.setCurrentIndex(1)
@@ -1159,11 +1172,36 @@ class MainWindow(QMainWindow):
     def _build_status_bar(self):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Prêt")
+        self.status_bar.showMessage(tr("status.ready"))
+
+        # Petit indicateur discret (droite de la barre de statut) pour
+        # l'indexation de la bibliothèque en arrière-plan : pas de fenêtre
+        # modale, juste ce texte qui apparaît/disparaît tout seul.
+        self.lbl_library_index_status = QLabel("")
+        self.lbl_library_index_status.setStyleSheet("color: #8a7a58; font-size: 11px;")
+        self.lbl_library_index_status.setVisible(False)
+        self.status_bar.addPermanentWidget(self.lbl_library_index_status)
 
     # ══════════════════════════════════════════════════════════════════
     # Recherche (pistes / albums / artistes / playlists)
     # ══════════════════════════════════════════════════════════════════
+    def _default_cover_pixmap(self, size):
+        """Retourne la pochette par défaut SVG utilisée si aucune cover n'est disponible."""
+        default_cover_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            "defaultcover.svg",
+        )
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        renderer = QSvgRenderer(default_cover_path)
+        if not renderer.isValid():
+            return pixmap
+        painter = QPainter(pixmap)
+        renderer.render(painter)
+        painter.end()
+        return pixmap
+
     def _get_track_cover_icon(self, track):
         """Icône de pochette pour une piste (fichier local, tags embarqués, ou CD via cache)."""
         cover_data = read_cover_art_data(track.path)
@@ -1173,11 +1211,11 @@ class MainWindow(QMainWindow):
                 drive, _ = cd_location
                 cover_data = get_cached_cover_for_drive(drive)
         if not cover_data:
-            return None
+            return QIcon(self._default_cover_pixmap(QSize(64, 64)))
         pixmap = QPixmap()
         if pixmap.loadFromData(cover_data):
             return QIcon(pixmap)
-        return None
+        return QIcon(self._default_cover_pixmap(QSize(64, 64)))
 
     def _all_known_tracks_deduped(self):
         """Toutes les pistes connues (liste de lecture + playlists perso), sans doublon de chemin."""
@@ -1214,29 +1252,92 @@ class MainWindow(QMainWindow):
     def _rebuild_library_index(self):
         """
         Réindexe les dossiers de musique configurés (utilisé par la
-        recherche), en arrière-plan avec une fenêtre de progression.
+        recherche), en arrière-plan et sans aucune fenêtre : juste un
+        petit texte discret dans le coin droit de la barre de statut,
+        pour ne jamais bloquer le démarrage ni l'interface.
         """
         if not self._library_folders:
             self._library_index_cache = []
             return
-        run_with_progress(
-            self, "Indexation de la bibliothèque",
-            "Analyse des dossiers de musique…",
-            scan_library_folders,
-            on_success=self._on_library_index_ready,
-            on_error=self._on_library_index_error,
-            folders=self._library_folders,
-        )
+
+        # Garder une référence sur self pour éviter que le thread ne soit
+        # ramassé par le GC pendant son exécution.
+        self._library_index_worker = TaskWorker(scan_library_folders, folders=self._library_folders)
+        self._library_index_worker.progress.connect(self._on_library_index_progress)
+        self._library_index_worker.finished_with_result.connect(self._on_library_index_ready)
+        self._library_index_worker.failed.connect(self._on_library_index_error)
+
+        self.lbl_library_index_status.setStyleSheet("color: #8a7a58; font-size: 11px;")
+        self.lbl_library_index_status.setText("⏳ " + tr("library.indexing"))
+        self.lbl_library_index_status.setVisible(True)
+
+        self._library_index_worker.start()
+
+    def _on_library_index_progress(self, current: int, total: int, message: str):
+        """Compteur discret « ⏳ Indexation… 120/480 » dans la barre de statut.
+
+        scan_library_folders() émet un premier report(0, total, …) une fois
+        les fichiers listés, puis un report par fichier analysé. Sur une
+        grosse bibliothèque ça fait des milliers d'appels : on limite le
+        rafraîchissement à ~10 par seconde pour ne pas saturer l'UI.
+        """
+        now = time.monotonic()
+        is_edge = current <= 0 or current >= total
+        if not is_edge and (now - self._library_index_last_ui_update) < 0.1:
+            return
+        self._library_index_last_ui_update = now
+
+        if total > 0:
+            self.lbl_library_index_status.setText(
+                "⏳ " + tr("library.indexing_count", current=current, total=total)
+            )
+        else:
+            self.lbl_library_index_status.setText("⏳ " + tr("library.indexing"))
 
     def _on_library_index_ready(self, index: list):
         self._library_index_cache = index
+        self.lbl_library_index_status.setVisible(False)
 
     def _on_library_index_error(self, message: str):
         self._library_index_cache = []
-        QMessageBox.warning(
-            self, "Indexation de la bibliothèque",
-            f"L'analyse des dossiers de musique a échoué :\n{message}"
-        )
+        self.lbl_library_index_status.setStyleSheet("color: #b06a3a; font-size: 11px;")
+        self.lbl_library_index_status.setText("⚠ " + tr("library.index_failed"))
+        QTimer.singleShot(5000, lambda: self.lbl_library_index_status.setVisible(False))
+
+    def _on_language_changed(self, code: str):
+        """Applique la nouvelle langue et retraduit ce qui peut l'être à chaud."""
+        set_language(code)
+        self._retranslate_ui()
+        self._schedule_save()
+
+    def _retranslate_ui(self):
+        """Remet à jour les textes déjà affichés après un changement de langue.
+
+        Seuls les libellés reconstruits ici changent sans redémarrage ; les
+        panneaux qui utilisent encore des chaînes en dur garderont leur texte
+        jusqu'au prochain lancement (d'où l'avertissement dans l'onglet Langue).
+        """
+        tabs = self._tabs
+        titles = [
+            ("tab.playlist", self.playlist_widget),
+            ("tab.video", self.video_window),
+            ("tab.my_playlists", self.playlist_manager_panel),
+            ("tab.surround", self.spatial_panel),
+            ("tab.equalizer", self.equalizer_panel),
+            ("tab.rotation", self.rotation_panel),
+            ("tab.vinyl", getattr(self, "vinyl_panel", None)),
+            ("tab.settings", self.settings_panel),
+        ]
+        for key, widget in titles:
+            if widget is None:
+                continue
+            index = tabs.indexOf(widget)
+            if index >= 0:
+                tabs.setTabText(index, tr(key))
+
+        self.status_bar.showMessage(tr("status.ready"))
+        self.settings_panel.retranslate_ui()
+        self.playlist_manager_panel.retranslate_ui()
 
     def _on_library_folders_changed(self, folders: list):
         self._library_folders = folders
@@ -1626,9 +1727,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{title} — SolarSound")
 
     def _set_track_artwork(self, track):
-        self.art_label.setText("♪")
-        self.art_label.setStyleSheet("font-size: 32px; color: #3d3420; border: none; background: transparent;")
-        self.art_label.setPixmap(QPixmap())
+        self.art_label.setText("")
+        self.art_label.setStyleSheet("border: none; background: transparent;")
+        self.art_label.setPixmap(self._default_cover_pixmap(self.art_frame.size()))
 
         if not track or not getattr(track, "path", None):
             return

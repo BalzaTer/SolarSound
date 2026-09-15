@@ -141,7 +141,10 @@ class CdAudio:
 
         Returns:
             dict avec les clés : first_track, last_track, track_offsets
-            (liste, une entrée par piste dans l'ordre), leadout_offset
+            (liste, une entrée par piste dans l'ordre), leadout_offset,
+            track_controls (liste parallèle à track_offsets : le nibble
+            "Control" de chaque piste ; le bit 0x04 indique une piste de
+            DONNÉES, à exclure des identifiants de disque).
         """
         if os.name != "nt":
             raise RuntimeError("La lecture du TOC est disponible uniquement sous Windows")
@@ -175,13 +178,24 @@ class CdAudio:
                 minute, second, frame = toc.raw[offset + 5:offset + 8]
                 return (minute * 60 + second) * 75 + frame
 
+            def track_control(number: int) -> int:
+                # TRACK_DATA : [Reserved][Control:4 | Adr:4][TrackNumber][Reserved1][Address x4]
+                # MSVC alloue les champs de bits à partir du bit de poids
+                # FAIBLE : Control occupe donc le nibble BAS, Adr le nibble
+                # haut (ce qui correspond aussi à l'octet (ADR<<4)|CONTROL
+                # du TOC SCSI brut).
+                offset = 4 + (number - first) * 8
+                return toc.raw[offset + 1] & 0x0F
+
             track_offsets = [frame_offset(n) for n in range(first, last + 1)]
+            track_controls = [track_control(n) for n in range(first, last + 1)]
             leadout_offset = frame_offset(last + 1)  # entrée juste après la dernière piste
 
             return {
                 "first_track": first,
                 "last_track": last,
                 "track_offsets": track_offsets,
+                "track_controls": track_controls,
                 "leadout_offset": leadout_offset,
             }
         finally:

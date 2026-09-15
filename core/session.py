@@ -49,6 +49,8 @@ class SessionState:
     play_mode: str = "SEQUENTIAL"
     current_tab: int = 1
     library_folders: list = None  # Dossiers de musique locaux (recherche + retrouver pistes déplacées)
+    playlist_view_mode: str = "tree"  # "tree" | "details" | "icons" (onglet "Mes Playlists")
+    language: str = "fr"  # code ISO 639-1 (voir core/i18n.py)
 
     # Audio
     volume: int = 100
@@ -105,6 +107,8 @@ class SessionManager:
                 "play_mode": state.play_mode,
                 "current_tab": state.current_tab,
                 "library_folders": getattr(state, "library_folders", []) or [],
+                "playlist_view_mode": getattr(state, "playlist_view_mode", "tree"),
+                "language": getattr(state, "language", "fr"),
                 "volume": state.volume,
                 "output_device": state.output_device,
                 "progress_style": state.progress_style,
@@ -144,6 +148,8 @@ class SessionManager:
             state.play_mode       = data.get("play_mode", "SEQUENTIAL")
             state.current_tab     = data.get("current_tab", 1)
             state.library_folders = data.get("library_folders", []) or []
+            state.playlist_view_mode = data.get("playlist_view_mode", "tree")
+            state.language = data.get("language", "fr")
             state.volume          = data.get("volume", 100)
             state.output_device    = data.get("output_device")
             state.progress_style   = data.get("progress_style", "classic")
