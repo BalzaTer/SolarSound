@@ -31,10 +31,15 @@ class PreviewPlayer:
         self.excerpt_seconds = excerpt_seconds
         self._current_path = None
 
-    def play_excerpt(self, path: str):
-        """Lance (ou remplace) l'extrait en cours pour ce fichier."""
+    def play_excerpt(self, path: str) -> float:
+        """
+        Lance (ou remplace) l'extrait en cours pour ce fichier.
+        Retourne sa durée en secondes (0.0 si rien n'a pu être joué), pour
+        que l'appelant puisse programmer la reprise du lecteur principal
+        une fois l'extrait terminé.
+        """
         if not SOUNDDEVICE_OK:
-            return
+            return 0.0
         self.stop()
         self._current_path = path
         try:
@@ -42,25 +47,28 @@ class PreviewPlayer:
         except Exception as e:
             print(f"[PreviewPlayer] Impossible de décoder l'extrait de {path} : {e}")
             self._current_path = None
-            return
+            return 0.0
 
         total_frames = len(data)
         if total_frames <= 0:
-            return
+            return 0.0
 
         excerpt_frames = int(self.excerpt_seconds * sr)
         start = max(0, total_frames // 2 - excerpt_frames // 2)
         end = min(total_frames, start + excerpt_frames)
         if end <= start:
-            return
+            return 0.0
 
         excerpt = data[start:end].astype(np.float32) / 32768.0
+        duration = len(excerpt) / float(sr)
 
         try:
             sd.play(excerpt, sr)
+            return duration
         except Exception as e:
             print(f"[PreviewPlayer] Impossible de jouer l'extrait de {path} : {e}")
             self._current_path = None
+            return 0.0
 
     def stop(self):
         """Arrête l'extrait en cours, s'il y en a un."""

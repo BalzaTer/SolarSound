@@ -44,7 +44,16 @@ DEFAULT_SHORTCUTS = {
     "speed_down":    "Ctrl+Down",
     "speed_reset":   "Ctrl+0",
     "open_file":     "Ctrl+O",
-    "save_playlist": "Ctrl+S",
+    "open_cd":       "Ctrl+Shift+D",
+    "scan_missing":  "Ctrl+Shift+R",
+    "tab_equalizer": "Ctrl+E",
+    "tab_my_playlists": "Ctrl+P",
+    "tab_playlist":  "Ctrl+L",
+    "tab_video":     "Ctrl+M",
+    "tab_surround":  "Ctrl+S",
+    "tab_rotation":  "Ctrl+T",
+    "tab_vinyl":     "Ctrl+I",
+    "tab_settings":  "Ctrl+Shift+P",
     "close":         "Ctrl+Q",
 }
 
@@ -67,7 +76,16 @@ SHORTCUT_LABELS = {
     "speed_down":    "Ralentir",
     "speed_reset":   "Vitesse normale (1x)",
     "open_file":     "Ouvrir un fichier",
-    "save_playlist": "Enregistrer la liste",
+    "open_cd":       "Ouvrir un CD audio",
+    "scan_missing":  "Rechercher les fichiers manquants",
+    "tab_equalizer": "Onglet Egaliseur",
+    "tab_my_playlists": "Onglet Mes Playlists",
+    "tab_playlist":  "Onglet Playlist",
+    "tab_video":     "Onglet Video",
+    "tab_surround":  "Onglet 5.1",
+    "tab_rotation":  "Onglet Rotation",
+    "tab_vinyl":     "Onglet Vinyle",
+    "tab_settings":  "Onglet Parametres",
     "close":         "Quitter",
 }
 
@@ -252,6 +270,101 @@ class ShortcutsTab(QWidget):
 
     def get_shortcuts(self) -> dict:
         return dict(self._shortcuts)
+
+
+class StartupTab(QWidget):
+    """Options de lancement automatique et de lecture au démarrage Windows."""
+
+    startup_changed = pyqtSignal(dict)
+
+    def __init__(self, config=None, parent=None):
+        super().__init__(parent)
+        config = config or {}
+        self._config = {
+            "enabled": bool(config.get("enabled", False)),
+            "mode": config.get("mode", "none"),
+            "value": config.get("value", ""),
+        }
+        self._sources = {}
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+
+        self.chk_enabled = QCheckBox("Lancer SolarSound au démarrage de Windows")
+        self.chk_enabled.setChecked(self._config["enabled"])
+        self.chk_enabled.toggled.connect(self._emit_changed)
+        layout.addWidget(self.chk_enabled)
+
+        layout.addWidget(QLabel("Lecture automatique :"))
+        self.cmb_mode = QComboBox()
+        self.cmb_mode.addItem("Ne rien lancer", "none")
+        self.cmb_mode.addItem("Jouer une humeur", "mood")
+        self.cmb_mode.addItem("Jouer une playlist", "playlist")
+        self.cmb_mode.addItem("Jouer un dossier de playlists", "playlist_folder")
+        self.cmb_mode.addItem("Jouer un dossier complet", "filesystem_folder")
+        self.cmb_mode.currentIndexChanged.connect(self._refresh_targets)
+        layout.addWidget(self.cmb_mode)
+
+        self.cmb_target = QComboBox()
+        layout.addWidget(self.cmb_target)
+
+        self.path_row = QWidget()
+        path_layout = QHBoxLayout(self.path_row)
+        path_layout.setContentsMargins(0, 0, 0, 0)
+        self.path_edit = QLineEdit()
+        self.path_edit.setPlaceholderText("Dossier à jouer…")
+        self.path_edit.textChanged.connect(self._emit_changed)
+        path_layout.addWidget(self.path_edit)
+        self.btn_browse = QPushButton("Parcourir…")
+        self.btn_browse.clicked.connect(self._browse_folder)
+        path_layout.addWidget(self.btn_browse)
+        layout.addWidget(self.path_row)
+        layout.addStretch()
+        self._set_mode(self._config["mode"])
+
+    def set_sources(self, moods, playlists, folders):
+        self._sources = {
+            "mood": [(name, name) for name in moods],
+            "playlist": [(name, playlist_id) for name, playlist_id in playlists],
+            "playlist_folder": [(name, folder_id) for name, folder_id in folders],
+        }
+        self._refresh_targets()
+
+    def _set_mode(self, mode):
+        index = self.cmb_mode.findData(mode)
+        self.cmb_mode.setCurrentIndex(index if index >= 0 else 0)
+
+    def _refresh_targets(self):
+        mode = self.cmb_mode.currentData()
+        self.cmb_target.blockSignals(True)
+        self.cmb_target.clear()
+        for label, value in self._sources.get(mode, []):
+            self.cmb_target.addItem(label, value)
+        index = self.cmb_target.findData(self._config.get("value", ""))
+        if index >= 0:
+            self.cmb_target.setCurrentIndex(index)
+        self.cmb_target.blockSignals(False)
+        self.cmb_target.setVisible(mode in self._sources)
+        self.path_row.setVisible(mode == "filesystem_folder")
+        self._emit_changed()
+
+    def _browse_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Choisir le dossier à jouer")
+        if path:
+            self.path_edit.setText(path)
+
+    def _emit_changed(self):
+        mode = self.cmb_mode.currentData() or "none"
+        value = self.path_edit.text() if mode == "filesystem_folder" else self.cmb_target.currentData()
+        self._config = {
+            "enabled": self.chk_enabled.isChecked(),
+            "mode": mode,
+            "value": value or "",
+        }
+        self.startup_changed.emit(dict(self._config))
 
 
 # ── Panneau Couleurs ─────────────────────────────────────────────────────────
@@ -665,21 +778,24 @@ class SettingsPanel(QWidget):
     font_changed      = pyqtSignal(dict)
     folders_changed   = pyqtSignal(list)
     language_changed  = pyqtSignal(str)
+    startup_changed   = pyqtSignal(dict)
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
                  output_device=None, progress_style="classic",
-                 library_folders: list = None, language: str = "fr", parent=None):
+                 library_folders: list = None, language: str = "fr",
+                 startup_config: dict = None, parent=None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
         font_cfg  = font_cfg  or dict(DEFAULT_FONT)
 
         self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device,
-                        progress_style, library_folders or [], language)
+                    progress_style, library_folders or [], language,
+                    startup_config or {})
 
     def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device,
-                  progress_style, library_folders, language):
+                progress_style, library_folders, language, startup_config):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -694,6 +810,10 @@ class SettingsPanel(QWidget):
         self.shortcuts_tab = ShortcutsTab(shortcuts)
         self.shortcuts_tab.shortcuts_changed.connect(self.shortcuts_changed)
         tabs.addTab(self.shortcuts_tab, tr("settings.tab.shortcuts"))
+
+        self.startup_tab = StartupTab(startup_config)
+        self.startup_tab.startup_changed.connect(self.startup_changed)
+        tabs.addTab(self.startup_tab, "Démarrage")
 
         self.colors_tab = ColorsTab(colors)
         self.colors_tab.colors_changed.connect(self.colors_changed)
@@ -717,10 +837,11 @@ class SettingsPanel(QWidget):
         """Remet à jour les textes de ce panneau après un changement de langue à chaud."""
         self._tabs.setTabText(0, tr("settings.tab.audio"))
         self._tabs.setTabText(1, tr("settings.tab.shortcuts"))
-        self._tabs.setTabText(2, tr("settings.tab.colors"))
-        self._tabs.setTabText(3, tr("settings.tab.fonts"))
-        self._tabs.setTabText(4, tr("settings.tab.library"))
-        self._tabs.setTabText(5, tr("settings.tab.language"))
+        self._tabs.setTabText(2, "Démarrage")
+        self._tabs.setTabText(3, tr("settings.tab.colors"))
+        self._tabs.setTabText(4, tr("settings.tab.fonts"))
+        self._tabs.setTabText(5, tr("settings.tab.library"))
+        self._tabs.setTabText(6, tr("settings.tab.language"))
         self.language_tab.retranslate()
 
     def get_shortcuts(self) -> dict:

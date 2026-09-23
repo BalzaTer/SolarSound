@@ -8,14 +8,14 @@ from typing import List
 
 from PyQt6.QtWidgets import (
     QTabBar,
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
     QPushButton, QLabel, QSlider, QTabWidget, QFrame,
     QSizePolicy, QMenuBar, QStatusBar, QMessageBox,
     QFileDialog, QGroupBox, QApplication,
-    QLineEdit, QListWidget, QListWidgetItem
+    QLineEdit, QListWidget, QListWidgetItem, QStyledItemDelegate
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal, QPoint, QEvent
-from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal, QPoint, QEvent, QRect
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 
 try:
@@ -34,6 +34,8 @@ try:
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
     from ..core.playlist_manager import PlaylistManager
+    from ..core.custom_playlist import MoodEnum
+    from ..core.startup import set_launch_at_startup
     from ..audio.engine import AudioEngine, SpatialConfig
     from ..audio.cd import parse_cd_uri
     from ..audio.cd_metadata import get_cached_cover_for_drive
@@ -42,7 +44,7 @@ try:
     from ..audio.preview_player import PreviewPlayer
     from ..audio.metadata import format_duration, read_metadata, read_cover_art_data
     from ..core.error_logging import append_error_log
-    from ..core.volume import gain_to_slider_value, slider_to_gain
+    from ..core.volume import SLIDER_MAX, gain_to_slider_value, slider_to_gain
     from ..core.i18n import tr, set_language, get_language, DEFAULT_LANGUAGE
 except (ImportError, ModuleNotFoundError):
     # If this module is run directly (python ui/main_window.py), absolute
@@ -67,6 +69,8 @@ except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
     from core.playlist_manager import PlaylistManager
+    from core.custom_playlist import MoodEnum
+    from core.startup import set_launch_at_startup
     from audio.engine import AudioEngine, SpatialConfig
     from ui.equalizer_panel import EqualizerPanel
     from audio.cd import parse_cd_uri
@@ -76,7 +80,7 @@ except (ImportError, ModuleNotFoundError):
     from audio.preview_player import PreviewPlayer
     from audio.metadata import format_duration, read_metadata, read_cover_art_data
     from core.error_logging import append_error_log
-    from core.volume import gain_to_slider_value, slider_to_gain
+    from core.volume import SLIDER_MAX, gain_to_slider_value, slider_to_gain
     from core.i18n import tr, set_language, get_language, DEFAULT_LANGUAGE
 
 
@@ -147,6 +151,58 @@ class DetachableTabWidget(QTabWidget):
         win.show()
 
 
+class _HoverProgressDelegate(QStyledItemDelegate):
+    """
+    Dessine une fine barre colorée en bas de la ligne survolée dans
+    SearchResultsPopup, sous le texte normal de l'item :
+      - pendant l'attente avant l'extrait : la barre se remplit de gauche
+        à droite, jusqu'à HOVER_DELAY_MS (matérialise le compte à rebours) ;
+      - pendant la lecture de l'extrait : un segment glissant en boucle,
+        visuellement distinct, indique que l'aperçu est en cours.
+    """
+
+    BAR_HEIGHT = 3
+
+    def __init__(self, popup, parent=None):
+        super().__init__(parent)
+        self._popup = popup
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        popup = self._popup
+        item = popup.item(index.row())
+        if item is None or item is not popup._hovered_item or popup._hover_state == "idle":
+            return
+
+        rect = option.rect
+        bar_rect = QRect(rect.left(), rect.bottom() - self.BAR_HEIGHT + 1,
+                          rect.width(), self.BAR_HEIGHT)
+        accent = popup._accent_color
+        track = QColor(accent.red(), accent.green(), accent.blue(), 55)
+        elapsed = max(0.0, time.monotonic() - popup._hover_start_time)
+
+        painter.save()
+        painter.fillRect(bar_rect, track)
+
+        if popup._hover_state == "waiting":
+            duration = max(0.05, popup.HOVER_DELAY_MS / 1000.0)
+            fraction = min(1.0, elapsed / duration)
+            filled_w = int(bar_rect.width() * fraction)
+            if filled_w > 0:
+                painter.fillRect(QRect(bar_rect.left(), bar_rect.top(), filled_w, bar_rect.height()), accent)
+        elif popup._hover_state == "playing":
+            period = 1.1  # secondes pour un aller simple du segment
+            seg_w = max(24, int(bar_rect.width() * 0.28))
+            travel = bar_rect.width() + seg_w
+            phase = (elapsed % period) / period
+            x = bar_rect.left() - seg_w + int(phase * travel)
+            seg_rect = QRect(x, bar_rect.top(), seg_w, bar_rect.height()).intersected(bar_rect)
+            if not seg_rect.isEmpty():
+                painter.fillRect(seg_rect, accent)
+
+        painter.restore()
+
+
 class SearchResultsPopup(QListWidget):
     """
     Liste déroulante des résultats de recherche (pistes/albums/artistes/
@@ -180,10 +236,33 @@ class SearchResultsPopup(QListWidget):
         self.itemEntered.connect(self._on_item_entered)
 
         self._hovered_item = None
+        self._hover_state = "idle"   # "idle" | "waiting" | "playing"
+        self._hover_start_time = 0.0
+        self._accent_color = QColor("#f5a623")
+
         self._hover_timer = QTimer(self)
         self._hover_timer.setSingleShot(True)
         self._hover_timer.setInterval(self.HOVER_DELAY_MS)
         self._hover_timer.timeout.connect(self._on_hover_timeout)
+
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(33)  # ~30 fps, suffisant pour une barre fine
+        self._anim_timer.timeout.connect(self.viewport().update)
+
+        self.setItemDelegate(_HoverProgressDelegate(self, self))
+
+    def set_accent_color(self, color):
+        """Aligne la couleur de l'animation sur le thème courant."""
+        self._accent_color = QColor(color) if not isinstance(color, QColor) else color
+
+    def _set_hover_state(self, state: str):
+        self._hover_state = state
+        self._hover_start_time = time.monotonic()
+        if state == "idle":
+            self._anim_timer.stop()
+            self.viewport().update()
+        elif not self._anim_timer.isActive():
+            self._anim_timer.start()
 
     def _on_item_clicked(self, item):
         payload = item.data(Qt.ItemDataRole.UserRole)
@@ -196,25 +275,30 @@ class SearchResultsPopup(QListWidget):
             return
         self._hovered_item = item
         self._hover_timer.stop()
+        self._set_hover_state("idle")
         self.hover_preview_cancelled.emit()
         if item.data(Qt.ItemDataRole.UserRole):
             self._hover_timer.start()
+            self._set_hover_state("waiting")
 
     def _on_hover_timeout(self):
         if self._hovered_item:
             payload = self._hovered_item.data(Qt.ItemDataRole.UserRole)
             if payload:
+                self._set_hover_state("playing")
                 self.hover_preview_requested.emit(payload)
 
     def leaveEvent(self, event):
         self._hover_timer.stop()
         self._hovered_item = None
+        self._set_hover_state("idle")
         self.hover_preview_cancelled.emit()
         super().leaveEvent(event)
 
     def hide(self):
         self._hover_timer.stop()
         self._hovered_item = None
+        self._set_hover_state("idle")
         self.hover_preview_cancelled.emit()
         super().hide()
 
@@ -259,6 +343,7 @@ class MainWindow(QMainWindow):
         self._current_track = None
         self._current_media_path = None
         self._is_handling_error = False
+        self._playlist_drop_cursor_active = False
         self.engine.on_position_changed = self._on_position_changed
         self.engine.on_track_ended = self._on_track_ended
         self.engine.on_error = self._on_engine_error
@@ -285,6 +370,13 @@ class MainWindow(QMainWindow):
         self._library_index_cache: list = []
         self._library_index_last_ui_update = 0.0
         self._preview_player = PreviewPlayer()
+        # État de la pause automatique du lecteur principal pendant un
+        # extrait de recherche (voir _on_search_hover_preview) :
+        self._preview_paused_audio = False  # AudioEngine mis en pause pour l'extrait
+        self._preview_paused_video = False  # VideoEngine idem
+        self._preview_resume_timer = QTimer(self)
+        self._preview_resume_timer.setSingleShot(True)
+        self._preview_resume_timer.timeout.connect(self._resume_main_after_preview)
 
         # Géométrie normale (hors minimisé) — mise à jour via changeEvent/moveEvent/resizeEvent
         self._normal_geometry = None
@@ -307,6 +399,7 @@ class MainWindow(QMainWindow):
         self._colors    = dict(DEFAULT_COLORS)
         self._font_cfg  = dict(DEFAULT_FONT)
         self._progress_style = "classic"
+        self._startup_config = {"enabled": False, "mode": "none", "value": ""}
         self._last_theme_colors = dict(DEFAULT_COLORS)
 
         # Mode courant : 'audio' ou 'video'
@@ -321,6 +414,11 @@ class MainWindow(QMainWindow):
         # construire l'UI : sinon les onglets seraient créés en français puis
         # retraduits, ce qui se voit au démarrage.
         session = self._session.load()
+        self._startup_config = {
+            "enabled": getattr(session, "startup_enabled", False),
+            "mode": getattr(session, "startup_mode", "none"),
+            "value": getattr(session, "startup_value", ""),
+        }
         set_language(getattr(session, "language", DEFAULT_LANGUAGE))
 
         self._build_ui()
@@ -338,17 +436,65 @@ class MainWindow(QMainWindow):
             self._open_files_from_args(open_files)
 
     # ── Glisser-déposer global (redirige vers _open_files_from_args) ──
+    def _playlists_tab_active(self):
+        return (
+            hasattr(self, "_tabs")
+            and hasattr(self, "playlist_manager_panel")
+            and self._tabs.currentWidget() is self.playlist_manager_panel
+        )
+
+    @staticmethod
+    def _folder_paths_from_drop(event):
+        if not event.mimeData().hasUrls():
+            return []
+        return [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.toLocalFile() and os.path.isdir(url.toLocalFile())
+        ]
+
+    def _set_playlist_drop_cursor(self, active):
+        if active and not self._playlist_drop_cursor_active:
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.DragCopyCursor))
+            self._playlist_drop_cursor_active = True
+        elif not active and self._playlist_drop_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._playlist_drop_cursor_active = False
+
     def dragEnterEvent(self, event):
         md = event.mimeData()
+        if self._playlists_tab_active() and self._folder_paths_from_drop(event):
+            self._set_playlist_drop_cursor(True)
+            event.acceptProposedAction()
+            return
         if md.hasUrls():
             event.acceptProposedAction()
         else:
             event.ignore()
 
+    def dragMoveEvent(self, event):
+        if self._playlists_tab_active() and self._folder_paths_from_drop(event):
+            self._set_playlist_drop_cursor(True)
+            event.acceptProposedAction()
+            return
+        self._set_playlist_drop_cursor(False)
+        event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        self._set_playlist_drop_cursor(False)
+        event.accept()
+
     def dropEvent(self, event):
         md = event.mimeData()
         if not md.hasUrls():
             return
+        folder_paths = self._folder_paths_from_drop(event)
+        if self._playlists_tab_active() and folder_paths:
+            self._set_playlist_drop_cursor(False)
+            self.playlist_manager_panel.handle_external_folder_drop(folder_paths)
+            event.acceptProposedAction()
+            return
+        self._set_playlist_drop_cursor(False)
         urls = md.urls()
         paths = []
         for u in urls:
@@ -527,6 +673,9 @@ class MainWindow(QMainWindow):
         )
         state.vinyl_config = vinyl_cfg
         state.visualizer_enabled = self.visualizer.is_animation_enabled()
+        state.startup_enabled = self._startup_config.get("enabled", False)
+        state.startup_mode = self._startup_config.get("mode", "none")
+        state.startup_value = self._startup_config.get("value", "")
         state.shortcuts = self._shortcuts
         state.colors    = self._colors
         state.font_cfg  = self._font_cfg
@@ -560,7 +709,7 @@ class MainWindow(QMainWindow):
 
         # ── Volume ───────────────────────────────────────────────────
         saved_value = state.volume
-        slider_value = max(50, min(150, saved_value))
+        slider_value = max(50, min(SLIDER_MAX, saved_value))
         self.sld_volume.setValue(slider_value)
 
         available_ids = {device[0] for device in self.engine.output_devices()}
@@ -892,7 +1041,7 @@ class MainWindow(QMainWindow):
         vol_col.addWidget(lbl_vol)
 
         self.sld_volume = QSlider(Qt.Orientation.Vertical)
-        self.sld_volume.setRange(50, 150)
+        self.sld_volume.setRange(50, SLIDER_MAX)
         self.sld_volume.setValue(gain_to_slider_value(1.0))
         self.sld_volume.setFixedHeight(70)
         self.sld_volume.setToolTip("Volume principal")
@@ -940,10 +1089,10 @@ class MainWindow(QMainWindow):
 
         return layout
 
-    def _build_transport(self) -> QHBoxLayout:
-        layout = QHBoxLayout()
-        layout.setSpacing(0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    def _build_transport(self) -> QGridLayout:
+        controls_layout = QHBoxLayout()
+        controls_layout.setSpacing(0)
+        controls_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         mode_layout = QHBoxLayout()
         mode_layout.setSpacing(4)
@@ -972,8 +1121,8 @@ class MainWindow(QMainWindow):
         self.btn_order.clicked.connect(self._on_order_toggle)
         self.btn_loop.clicked.connect(self._on_loop_toggle)
 
-        layout.addLayout(mode_layout)
-        layout.addSpacing(24)
+        controls_layout.addLayout(mode_layout)
+        controls_layout.addSpacing(24)
 
         self.btn_prev = QPushButton()
         self.btn_prev.setIcon(self._tinted_icon("preview.svg", self._colors["accent"]))
@@ -981,9 +1130,9 @@ class MainWindow(QMainWindow):
         self.btn_prev.setObjectName("btn_prev")
         self.btn_prev.setToolTip("Morceau précédent")
         self.btn_prev.clicked.connect(self._on_prev)
-        layout.addWidget(self.btn_prev)
+        controls_layout.addWidget(self.btn_prev)
 
-        layout.addSpacing(8)
+        controls_layout.addSpacing(8)
 
         self.btn_stop = QPushButton()
         self.btn_stop.setIcon(self._tinted_icon("stop.svg", self._colors["accent"]))
@@ -991,9 +1140,9 @@ class MainWindow(QMainWindow):
         self.btn_stop.setObjectName("btn_stop")
         self.btn_stop.setToolTip("Stop")
         self.btn_stop.clicked.connect(self._on_stop)
-        layout.addWidget(self.btn_stop)
+        controls_layout.addWidget(self.btn_stop)
 
-        layout.addSpacing(8)
+        controls_layout.addSpacing(8)
 
         self.btn_play = QPushButton()
         button_background = QColor(self._colors["btn_bg"])
@@ -1003,9 +1152,9 @@ class MainWindow(QMainWindow):
         self.btn_play.setObjectName("btn_play")
         self.btn_play.setToolTip("Lecture / Pause")
         self.btn_play.clicked.connect(self._on_play_pause)
-        layout.addWidget(self.btn_play)
+        controls_layout.addWidget(self.btn_play)
 
-        layout.addSpacing(8)
+        controls_layout.addSpacing(8)
 
         self.btn_next = QPushButton()
         self.btn_next.setIcon(self._tinted_icon("next.svg", self._colors["accent"]))
@@ -1013,9 +1162,104 @@ class MainWindow(QMainWindow):
         self.btn_next.setObjectName("btn_next")
         self.btn_next.setToolTip("Morceau suivant")
         self.btn_next.clicked.connect(self._on_next)
-        layout.addWidget(self.btn_next)
+        controls_layout.addWidget(self.btn_next)
+
+        self.next_track_frame = QFrame()
+        self.next_track_frame.setFixedSize(290, 62)
+        self.next_track_frame.setStyleSheet(
+            "QFrame { background-color: #0c0a07; border: 1px solid #3d3420; "
+            "border-radius: 6px; }"
+        )
+        next_layout = QHBoxLayout(self.next_track_frame)
+        next_layout.setContentsMargins(8, 5, 8, 5)
+        next_layout.setSpacing(8)
+
+        self.next_track_art = QLabel("♪")
+        self.next_track_art.setFixedSize(46, 46)
+        self.next_track_art.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_track_art.setStyleSheet(
+            "font-size: 22px; color: #5a4a28; border: none; background: #1e1a12;"
+        )
+        next_layout.addWidget(self.next_track_art)
+
+        next_info = QVBoxLayout()
+        next_info.setContentsMargins(0, 0, 0, 0)
+        next_info.setSpacing(1)
+        self.lbl_next_prefix = QLabel("Prochain :")
+        self.lbl_next_prefix.setStyleSheet(
+            "font-size: 10px; color: #f5a623; border: none; background: transparent;"
+        )
+        self.lbl_next_title = QLabel("Aucun morceau")
+        self.lbl_next_title.setStyleSheet(
+            "font-size: 12px; font-weight: bold; color: #e8d5a0; border: none; background: transparent;"
+        )
+        self.lbl_next_title.setMaximumWidth(215)
+        self.lbl_next_artist = QLabel("—")
+        self.lbl_next_artist.setStyleSheet(
+            "font-size: 10px; color: #a08060; border: none; background: transparent;"
+        )
+        self.lbl_next_artist.setMaximumWidth(215)
+        next_info.addWidget(self.lbl_next_prefix)
+        next_info.addWidget(self.lbl_next_title)
+        next_info.addWidget(self.lbl_next_artist)
+        next_layout.addLayout(next_info, stretch=1)
+        controls_widget = QWidget()
+        controls_widget.setLayout(controls_layout)
+
+        layout = QGridLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(controls_widget, 0, 1, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.next_track_frame, 0, 2, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.setColumnStretch(0, 1)
+        layout.setColumnStretch(2, 1)
+
+        self._update_next_track_panel()
 
         return layout
+
+    def _next_track_preview(self):
+        tracks = self.playlist.tracks
+        if not tracks:
+            return None
+
+        current_index = self.playlist.current_index
+        if self.playlist.play_mode == PlayMode.LOOP_ONE:
+            return self.playlist.current_track
+
+        if self.playlist.play_mode == PlayMode.RANDOM:
+            order = self.playlist._shuffle_order
+            if not order:
+                return tracks[0]
+            position = self.playlist._shuffle_pos
+            return tracks[order[(position + 1) % len(order)]]
+
+        next_index = 0 if current_index < 0 else current_index + 1
+        if next_index >= len(tracks):
+            if self.playlist.play_mode != PlayMode.LOOP_ALL:
+                return None
+            next_index = 0
+        return tracks[next_index]
+
+    def _update_next_track_panel(self):
+        if not hasattr(self, "next_track_art"):
+            return
+        track = self._next_track_preview()
+        if track is None:
+            self.next_track_art.clear()
+            self.next_track_art.setText("♪")
+            self.lbl_next_title.setText("Aucun morceau")
+            self.lbl_next_artist.setText("—")
+            return
+
+        title = track.title or os.path.basename(track.path)
+        artist = track.artist or "Artiste inconnu"
+        icon = self._get_track_cover_icon(track)
+        self.next_track_art.setText("")
+        self.next_track_art.setPixmap(icon.pixmap(46, 46))
+        self.lbl_next_title.setText(title)
+        self.lbl_next_title.setToolTip(title)
+        self.lbl_next_artist.setText(artist)
+        self.lbl_next_artist.setToolTip(artist)
 
     def _build_tabs(self) -> DetachableTabWidget:
         tabs = DetachableTabWidget()
@@ -1070,15 +1314,21 @@ class MainWindow(QMainWindow):
         self.settings_panel = SettingsPanel(
             self._shortcuts, self._colors, self._font_cfg,
             self.engine.output_devices(), self.engine.output_device, self._progress_style,
-            self._library_folders, get_language()
+            self._library_folders, get_language(), self._startup_config
         )
         self.settings_panel.output_changed.connect(self._on_output_changed)
+        self.settings_panel.startup_changed.connect(self._on_startup_changed)
         self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
         self.settings_panel.shortcuts_changed.connect(self._on_shortcuts_changed)
         self.settings_panel.colors_changed.connect(self._on_colors_changed)
         self.settings_panel.font_changed.connect(self._on_font_changed)
         self.settings_panel.folders_changed.connect(self._on_library_folders_changed)
         self.settings_panel.language_changed.connect(self._on_language_changed)
+        self.settings_panel.startup_tab.set_sources(
+            MoodEnum.get_all_moods(),
+            [(p.name, p.id) for p in self.playlist_manager.get_all_playlists()],
+            [(f.name, f.id) for f in self.playlist_manager.get_all_folders()],
+        )
         tabs.addTab(self.settings_panel, tr("tab.settings"))
 
         # Activer l'onglet vidéo par défaut (index 1)
@@ -1100,7 +1350,6 @@ class MainWindow(QMainWindow):
         file_menu.addAction(act_open_pl)
 
         act_save_pl = QAction("&Enregistrer la liste…", self)
-        act_save_pl.setShortcut(QKeySequence("Ctrl+S"))
         act_save_pl.triggered.connect(self.playlist_widget._on_save_playlist)
         file_menu.addAction(act_save_pl)
 
@@ -1163,6 +1412,7 @@ class MainWindow(QMainWindow):
         search_layout.addWidget(self.search_field)
 
         self.search_popup = SearchResultsPopup(self)
+        self.search_popup.set_accent_color(self._colors.get("accent", "#f5a623"))
         self.search_popup.result_activated.connect(self._on_search_result_activated)
         self.search_popup.hover_preview_requested.connect(self._on_search_hover_preview)
         self.search_popup.hover_preview_cancelled.connect(self._on_search_hover_preview_cancelled)
@@ -1452,8 +1702,9 @@ class MainWindow(QMainWindow):
     def _on_search_hover_preview(self, payload: dict):
         """
         Survol prolongé (>1,5s) d'un résultat de recherche : joue un court
-        extrait en arrière-plan, sans jamais toucher au lecteur principal
-        ni à la liste de lecture affichée (juste pour se faire une idée).
+        extrait en arrière-plan. Le lecteur principal (audio ou vidéo, selon
+        ce qui joue) est mis en pause le temps de l'extrait, puis reprend
+        automatiquement une fois celui-ci terminé.
         """
         kind = payload.get("type")
         track = None
@@ -1476,10 +1727,46 @@ class MainWindow(QMainWindow):
         if parse_cd_uri(track.path):
             return
 
-        self._preview_player.play_excerpt(track.path)
+        self._pause_main_for_preview()
+
+        duration = self._preview_player.play_excerpt(track.path)
+        self._preview_resume_timer.stop()
+        if duration > 0:
+            # Petite marge pour ne pas couper la reprise juste avant la fin
+            # réelle de l'extrait (latence du flux audio).
+            self._preview_resume_timer.start(int(duration * 1000) + 150)
+        else:
+            # Rien n'a pu être joué (fichier illisible, etc.) : pas la peine
+            # de garder le lecteur principal en pause pour rien.
+            self._resume_main_after_preview()
 
     def _on_search_hover_preview_cancelled(self):
+        self._preview_resume_timer.stop()
         self._preview_player.stop()
+        self._resume_main_after_preview()
+
+    def _pause_main_for_preview(self):
+        """Met en pause le lecteur principal (audio ou vidéo) avant un
+        extrait de recherche, et mémorise lequel pour le reprendre ensuite."""
+        if not self._preview_paused_audio and self.engine.state == AudioEngine.STATE_PLAYING:
+            self.engine.pause()
+            self._preview_paused_audio = True
+        if not self._preview_paused_video and self.video_engine.state == VideoEngine.STATE_PLAYING:
+            self.video_engine.pause()
+            self._preview_paused_video = True
+
+    def _resume_main_after_preview(self):
+        """Reprend le lecteur principal là où il a été mis en pause pour
+        l'extrait — uniquement s'il n'a pas été touché entre-temps."""
+        self._preview_resume_timer.stop()
+        if self._preview_paused_audio:
+            self._preview_paused_audio = False
+            if self.engine.state == AudioEngine.STATE_PAUSED:
+                self.engine.play()
+        if self._preview_paused_video:
+            self._preview_paused_video = False
+            if self.video_engine.state == VideoEngine.STATE_PAUSED:
+                self.video_engine.play()
 
     # ══════════════════════════════════════════════════════════════════
     # Timer UI
@@ -1578,8 +1865,12 @@ class MainWindow(QMainWindow):
             if not self.playlist.tracks:
                 return
             if self.playlist.current_index < 0:
-                self.playlist.set_current(0)
-            track = self.playlist.current_track
+                if self.playlist.play_mode == PlayMode.RANDOM:
+                    track = self.playlist.next_track()
+                else:
+                    track = self.playlist.set_current(0)
+            else:
+                track = self.playlist.current_track
             if track:
                 self._load_and_play(track, self.playlist.current_index)
     def _on_stop(self):
@@ -1658,9 +1949,12 @@ class MainWindow(QMainWindow):
         self.playlist_widget._update_count()
         self.playlist_widget.playlist_changed.emit()
         if mode == "replace" and self.playlist.tracks:
-            first_track = self.playlist.set_current(0)
+            if self.playlist.play_mode == PlayMode.RANDOM:
+                first_track = self.playlist.next_track()
+            else:
+                first_track = self.playlist.set_current(0)
             if first_track:
-                self._load_and_play(first_track, 0)
+                self._load_and_play(first_track, self.playlist.current_index)
 
     def _is_video(self, path: str) -> bool:
         return any(path.lower().endswith(ext) for ext in SUPPORTED_VIDEO_FORMATS)
@@ -1725,6 +2019,7 @@ class MainWindow(QMainWindow):
         self.lbl_album.setText(track.album or "")
         self._set_track_artwork(track)
         self.setWindowTitle(f"{title} — SolarSound")
+        self._update_next_track_panel()
 
     def _set_track_artwork(self, track):
         self.art_label.setText("")
@@ -1866,11 +2161,14 @@ class MainWindow(QMainWindow):
             mode = PlayMode.SEQUENTIAL
 
         self.playlist.play_mode = mode
+        if mode == PlayMode.RANDOM and self.playlist.current_index >= 0:
+            self.playlist.set_current(self.playlist.current_index)
         self._update_mode_buttons()
 
         _LABELS = {PlayMode.SEQUENTIAL: 'SEQUENTIEL', PlayMode.LOOP_ALL: 'BOUCLE ALL',
                    PlayMode.LOOP_ONE: 'BOUCLE 1', PlayMode.RANDOM: 'ALEATOIRE'}
         self.lbl_mode_indicator.setText('\u26ab ' + _LABELS[mode])
+        self._update_next_track_panel()
         self._schedule_save()
 
     def _update_mode_buttons(self):
@@ -1914,6 +2212,58 @@ class MainWindow(QMainWindow):
         self._apply_shortcuts()
         self._schedule_save()
 
+    def _on_startup_changed(self, config: dict):
+        self._startup_config = {
+            "enabled": bool(config.get("enabled", False)),
+            "mode": config.get("mode", "none"),
+            "value": config.get("value", ""),
+        }
+        if not set_launch_at_startup(self._startup_config["enabled"]):
+            self.status_bar.showMessage(
+                "Le démarrage automatique est disponible uniquement sous Windows."
+            )
+        self._schedule_save()
+
+    def start_configured_playback(self):
+        """Lance le contenu choisi dans les options de démarrage Windows."""
+        config = self._startup_config
+        if not config.get("enabled"):
+            return
+
+        mode = config.get("mode", "none")
+        value = config.get("value", "")
+        if mode == "mood":
+            tracks = self.playlist_manager.generate_flow([value]) if value else []
+            if tracks:
+                self._load_custom_tracks_into_playlist(tracks, mode="replace")
+            return
+
+        if mode == "playlist":
+            playlist = self.playlist_manager.get_playlist(value)
+            tracks = playlist.tracks if playlist else []
+            if tracks:
+                self._load_custom_tracks_into_playlist(list(tracks), mode="replace")
+            return
+
+        if mode == "playlist_folder":
+            tracks = []
+            for playlist in self.playlist_manager.get_all_playlists():
+                if playlist.folder_id == value:
+                    tracks.extend(playlist.tracks)
+            if tracks:
+                self._load_custom_tracks_into_playlist(tracks, mode="replace")
+            return
+
+        if mode == "filesystem_folder" and os.path.isdir(value):
+            paths = []
+            for root, _, files in os.walk(value):
+                for filename in sorted(files):
+                    path = os.path.join(root, filename)
+                    if os.path.splitext(filename)[1].lower() in Playlist.ALL_FORMATS:
+                        paths.append(path)
+            if paths:
+                self._open_files_from_args(paths)
+
     def _on_colors_changed(self, colors: dict):
         self._colors = colors
         ss = build_stylesheet(colors, self._font_cfg)
@@ -1928,6 +2278,7 @@ class MainWindow(QMainWindow):
         if self.vinyl_panel is not None:
             self.vinyl_panel.set_theme_colors(colors)
         self.playlist_widget.set_theme_colors(colors)
+        self.search_popup.set_accent_color(colors.get("accent", "#f5a623"))
         self.video_window.controls.set_theme_colors(colors)
         self._schedule_save()
 
@@ -1954,11 +2305,43 @@ class MainWindow(QMainWindow):
             'next': self._on_next,
             'prev': self._on_prev,
             'open_file': self.playlist_widget._on_add_files,
-            'save_playlist': self.playlist_widget._on_save_playlist,
+            'open_cd': self.playlist_widget._on_add_cd,
+            'scan_missing': self.playlist_manager_panel._on_scan_library,
             'close': self.close,
         }
-        # Stocker pour keyPressEvent
+        shortcut_actions = getattr(self, "_shortcut_actions", {})
+        tab_targets = {
+            "tab_equalizer": self.equalizer_panel,
+            "tab_my_playlists": self.playlist_manager_panel,
+            "tab_playlist": self.playlist_widget,
+            "tab_video": self.video_window,
+            "tab_surround": self.spatial_panel,
+            "tab_rotation": self.rotation_panel,
+            "tab_vinyl": self.vinyl_panel,
+            "tab_settings": self.settings_panel,
+        }
+        mapping.update({
+            key: (lambda _checked=False, target=target: self._activate_tab(target))
+            for key, target in tab_targets.items() if target is not None
+        })
+        for key, callback in mapping.items():
+            if key not in sc or callback is None:
+                continue
+            action = shortcut_actions.get(key)
+            if action is None:
+                action = QAction(self)
+                action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+                action.triggered.connect(callback)
+                shortcut_actions[key] = action
+                self.addAction(action)
+            action.setShortcut(QKeySequence(sc[key]))
+        self._shortcut_actions = shortcut_actions
         self._shortcut_map = sc
+
+    def _activate_tab(self, widget):
+        index = self._tabs.indexOf(widget)
+        if index >= 0:
+            self._tabs.setCurrentIndex(index)
 
     def _on_spatial_config_changed(self, config):
         self.engine.config = config
@@ -1991,6 +2374,7 @@ class MainWindow(QMainWindow):
         QMetaObject.invokeMethod(self, '_advance_to_next',
                                   Qt.ConnectionType.QueuedConnection)
     def _on_playlist_changed(self):
+        self._update_next_track_panel()
         self._schedule_save()
 
     # ══════════════════════════════════════════════════════════════════
@@ -2035,7 +2419,7 @@ class MainWindow(QMainWindow):
                 self.video_engine.set_speed(1.0)
                 self.video_window.controls.set_speed(1.0)
         elif combo == sc.get('volume_up', 'Up'):
-            self.sld_volume.setValue(min(150, self.sld_volume.value() + 5))
+            self.sld_volume.setValue(min(SLIDER_MAX, self.sld_volume.value() + 5))
         elif combo == sc.get('volume_down', 'Down'):
             self.sld_volume.setValue(max(50, self.sld_volume.value() - 5))
         elif combo == sc.get('seek_fwd_5', 'Ctrl+Right'):

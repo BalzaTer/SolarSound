@@ -5,8 +5,8 @@ MIN_DB = -60.0
 MAX_DB = 0.0
 SLIDER_MIN = 0
 SLIDER_NORMAL_MAX = 100
-SLIDER_MAX = 150
-BOOST_GAIN_MAX = 1.5
+SLIDER_MAX = 125
+BOOST_GAIN_MAX = 1.25
 
 
 def slider_to_gain(value: int | float) -> float:

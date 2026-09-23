@@ -1,7 +1,7 @@
 """Ecran de lancement anime de SolarSound."""
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, pyqtProperty, Qt
-from PyQt6.QtGui import QColor, QPainter, QPixmap
+from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
 
 
@@ -10,7 +10,7 @@ class _LogoWidget(QWidget):
         super().__init__(parent)
         self._pixmap = pixmap
         self._scale = 1.0
-        self.setFixedSize(300, 300)
+        self.setFixedSize(220, 220)
 
     def get_scale(self):
         return self._scale
@@ -46,7 +46,7 @@ class SplashScreen(QWidget):
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.SplashScreen
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(430, 390)
+        self.setFixedSize(430, 360)
 
         logo = QPixmap(logo_path)
         if logo.isNull():
@@ -72,7 +72,7 @@ class SplashScreen(QWidget):
         self._progress.setFixedHeight(7)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(36, 28, 36, 34)
+        layout.setContentsMargins(36, 18, 36, 24)
         layout.setSpacing(4)
         layout.addWidget(self._logo, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
@@ -124,6 +124,14 @@ class SplashScreen(QWidget):
         self._animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self._animation.setLoopCount(-1)
         self._animation.start()
+
+    def paintEvent(self, event):
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setBrush(QColor("#000000"))
+        painter.setPen(QPen(QColor("#5a3d16"), 1))
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -1, -1), 14, 14)
 
     def center_on_screen(self, screen=None):
         screen = screen or self.screen()

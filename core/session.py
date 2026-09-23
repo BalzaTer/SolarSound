@@ -66,6 +66,9 @@ class SessionState:
     colors: dict = None
     font_cfg: dict = None
     visualizer_enabled: bool = True
+    startup_enabled: bool = False
+    startup_mode: str = "none"
+    startup_value: str = ""
 
     def __post_init__(self):
         if self.window is None:
@@ -119,6 +122,9 @@ class SessionManager:
                 "colors": getattr(state, "colors", {}),
                 "font_cfg": getattr(state, "font_cfg", {}),
                 "visualizer_enabled": getattr(state, "visualizer_enabled", True),
+                "startup_enabled": getattr(state, "startup_enabled", False),
+                "startup_mode": getattr(state, "startup_mode", "none"),
+                "startup_value": getattr(state, "startup_value", ""),
             }
             with open(self._path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -160,6 +166,9 @@ class SessionManager:
             state.colors          = data.get("colors", {})
             state.font_cfg        = data.get("font_cfg", {})
             state.visualizer_enabled = data.get("visualizer_enabled", True)
+            state.startup_enabled = data.get("startup_enabled", False)
+            state.startup_mode = data.get("startup_mode", "none")
+            state.startup_value = data.get("startup_value", "")
         except Exception as e:
             print(f"[Session] Impossible de charger : {e}")
         return state

@@ -1,13 +1,13 @@
 """Panneau de gestion des playlists personnalisées (onglet "Mes Playlists")"""
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QTreeWidget, QTreeWidgetItem, QPushButton, QLabel, QFileDialog,
     QMessageBox, QFrame, QSizePolicy, QAbstractItemView, QInputDialog,
     QSplitter, QMenu, QStackedWidget, QButtonGroup, QStyle
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QIcon, QAction, QKeySequence, QPainter
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent
+from PyQt6.QtGui import QPixmap, QIcon, QAction, QKeySequence, QPainter, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 import os
 from datetime import datetime
@@ -129,6 +129,7 @@ class PlaylistBrowserView(QWidget):
     selection_changed = pyqtSignal(object)      # dict {"type","id"} ou None
     navigation_changed = pyqtSignal(object)      # id du dossier affiché (None = racine)
     context_menu_requested = pyqtSignal(object)  # QPoint global, prêt pour menu.exec()
+    folders_dropped = pyqtSignal(list, object)   # (List[str], dossier actuellement ouvert)
 
     def __init__(self, manager: PlaylistManager, mode: str, get_cover_icon, parent=None):
         super().__init__(parent)
@@ -136,6 +137,7 @@ class PlaylistBrowserView(QWidget):
         self.mode = mode  # "details" ou "icons"
         self._get_cover_icon = get_cover_icon
         self._folder_id = None
+        self._drag_cursor_active = False
         self._build_ui()
 
     def _build_ui(self):
@@ -177,11 +179,56 @@ class PlaylistBrowserView(QWidget):
             self.view.setWordWrap(True)
 
         self.view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.view.setAcceptDrops(True)
+        self.view.viewport().installEventFilter(self)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.itemSelectionChanged.connect(self._on_selection_changed)
         self.view.itemDoubleClicked.connect(self._on_item_activated)
         self.view.customContextMenuRequested.connect(self._on_context_menu)
         layout.addWidget(self.view)
+
+    def _dropped_folders(self, event):
+        if not event.mimeData().hasUrls():
+            return []
+        return [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.toLocalFile() and os.path.isdir(url.toLocalFile())
+        ]
+
+    def _set_drag_cursor(self, active):
+        if active and not self._drag_cursor_active:
+            QApplication.setOverrideCursor(QCursor(Qt.CursorShape.DragCopyCursor))
+            self._drag_cursor_active = True
+        elif not active and self._drag_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._drag_cursor_active = False
+
+    def eventFilter(self, watched, event):
+        if watched is self.view.viewport():
+            event_type = event.type()
+            if event_type == QEvent.Type.DragEnter:
+                valid = bool(self._dropped_folders(event))
+                self._set_drag_cursor(valid)
+                if valid:
+                    event.acceptProposedAction()
+                    return True
+            elif event_type == QEvent.Type.DragMove:
+                valid = bool(self._dropped_folders(event))
+                self._set_drag_cursor(valid)
+                if valid:
+                    event.acceptProposedAction()
+                    return True
+            elif event_type == QEvent.Type.Drop:
+                folder_paths = self._dropped_folders(event)
+                self._set_drag_cursor(False)
+                if folder_paths:
+                    self.folders_dropped.emit(folder_paths, self._folder_id)
+                    event.acceptProposedAction()
+                    return True
+            elif event_type in (QEvent.Type.DragLeave, QEvent.Type.Leave):
+                self._set_drag_cursor(False)
+        return super().eventFilter(watched, event)
 
     def retranslate(self):
         """En-têtes et infobulle : posés une seule fois dans _build_ui,
@@ -505,7 +552,7 @@ class PlaylistManagerPanel(QWidget):
         self.act_move_down.triggered.connect(lambda: self._on_move_step("down"))
 
         self.act_move_to_folder = QAction("→ 📁 Déplacer vers un dossier…", self)
-        self.act_move_to_folder.setShortcut(QKeySequence("Ctrl+M"))
+        self.act_move_to_folder.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self.act_move_to_folder.triggered.connect(self._on_move_to_folder)
 
         # Les raccourcis ne s'activent que quand l'arbre "Mes Playlists"
@@ -555,6 +602,8 @@ class PlaylistManagerPanel(QWidget):
         self.tree_playlists.currentItemChanged.connect(self._on_selection_changed)
         self.tree_playlists.internal_order_changed.connect(self._on_tree_internal_change)
         self.tree_playlists.folders_dropped.connect(self._on_folders_dropped)
+        self.view_details.folders_dropped.connect(self._on_folders_dropped)
+        self.view_icons.folders_dropped.connect(self._on_folders_dropped)
         self.tree_playlists.customContextMenuRequested.connect(self._show_tree_context_menu)
         self.tree_playlists.itemExpanded.connect(lambda item: self._on_folder_expansion_changed(item, True))
         self.tree_playlists.itemCollapsed.connect(lambda item: self._on_folder_expansion_changed(item, False))
@@ -1126,6 +1175,14 @@ class PlaylistManagerPanel(QWidget):
             on_error=self._on_library_task_error,
             folder_paths=folder_paths, target_folder_id=target_folder_id,
         )
+
+    def handle_external_folder_drop(self, folder_paths):
+        """Crée des playlists dans le dossier actuellement exploré."""
+        if self._view_mode == "tree":
+            target_folder_id = self._current_folder_id
+        else:
+            target_folder_id = self._browse_folder_id
+        self._on_folders_dropped(folder_paths, target_folder_id)
 
     def _on_folders_dropped_result(self, created):
         self.refresh_playlists()

@@ -55,36 +55,54 @@ class Playlist:
     # ── Ajout / Suppression ──────────────────────────────────────────
     def add_track(self, track: Track) -> int:
         self.tracks.append(track)
-        self._rebuild_shuffle()
-        return len(self.tracks) - 1
+        index = len(self.tracks) - 1
+        self._add_to_shuffle([index])
+        return index
 
     def add_tracks(self, paths: List[str]) -> int:
         added = 0
+        new_indices = []
         for p in paths:
             ext = os.path.splitext(p)[1].lower()
             if ext in self.ALL_FORMATS:
                 self.tracks.append(Track(path=p))
+                new_indices.append(len(self.tracks) - 1)
                 added += 1
-        self._rebuild_shuffle()
+        if new_indices:
+            self._add_to_shuffle(new_indices)
         return added
 
     def remove_track(self, index: int):
         if 0 <= index < len(self.tracks):
             self.tracks.pop(index)
-            if self.current_index >= len(self.tracks):
+            if self.current_index > index:
+                self.current_index -= 1
+            elif self.current_index >= len(self.tracks):
                 self.current_index = len(self.tracks) - 1
-            self._rebuild_shuffle()
+            self._remove_from_shuffle(index)
 
     def clear(self):
         self.tracks.clear()
         self.current_index = -1
         self._shuffle_order.clear()
+        self._shuffle_pos = -1
 
     def move_track(self, from_idx: int, to_idx: int):
         if 0 <= from_idx < len(self.tracks) and 0 <= to_idx < len(self.tracks):
             t = self.tracks.pop(from_idx)
             self.tracks.insert(to_idx, t)
-            self._rebuild_shuffle()
+            self._shuffle_order = [
+                to_idx if index == from_idx else
+                index - 1 if from_idx < index <= to_idx else
+                index + 1 if to_idx <= index < from_idx else index
+                for index in self._shuffle_order
+            ]
+            if self.current_index == from_idx:
+                self.current_index = to_idx
+            elif from_idx < self.current_index <= to_idx:
+                self.current_index -= 1
+            elif to_idx <= self.current_index < from_idx:
+                self.current_index += 1
 
     # ── Navigation ───────────────────────────────────────────────────
     @property
@@ -96,6 +114,10 @@ class Playlist:
     def set_current(self, index: int) -> Optional[Track]:
         if 0 <= index < len(self.tracks):
             self.current_index = index
+            if self.play_mode == PlayMode.RANDOM:
+                if not self._shuffle_order:
+                    self._rebuild_shuffle()
+                self._shuffle_pos = self._shuffle_order.index(index)
             return self.tracks[index]
         return None
 
@@ -136,7 +158,38 @@ class Playlist:
     def _rebuild_shuffle(self):
         self._shuffle_order = list(range(len(self.tracks)))
         random.shuffle(self._shuffle_order)
-        self._shuffle_pos = 0
+        self._shuffle_pos = -1
+
+    def _add_to_shuffle(self, new_indices: List[int]):
+        """Ajoute des pistes sans refaire l'ordre déjà parcouru."""
+        if not self._shuffle_order or self._shuffle_pos < 0:
+            self._rebuild_shuffle()
+            return
+
+        random.shuffle(new_indices)
+        insert_start = self._shuffle_pos + 2
+        for index in new_indices:
+            insert_at = random.randint(insert_start, len(self._shuffle_order))
+            self._shuffle_order.insert(insert_at, index)
+            insert_start = insert_at + 1
+
+    def _remove_from_shuffle(self, removed_index: int):
+        if not self._shuffle_order:
+            return
+        removed_pos = self._shuffle_order.index(removed_index)
+        self._shuffle_order.pop(removed_pos)
+        self._shuffle_order = [
+            index - 1 if index > removed_index else index
+            for index in self._shuffle_order
+        ]
+        if removed_pos < self._shuffle_pos:
+            self._shuffle_pos -= 1
+        elif removed_pos == self._shuffle_pos:
+            self._shuffle_pos -= 1
+        if not self._shuffle_order:
+            self._shuffle_pos = -1
+        else:
+            self._shuffle_pos = min(self._shuffle_pos, len(self._shuffle_order) - 1)
 
     def _next_shuffle(self) -> Optional[Track]:
         if not self._shuffle_order:
