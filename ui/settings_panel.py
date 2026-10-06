@@ -14,13 +14,14 @@ from PyQt6.QtWidgets import (
     QColorDialog, QFrame, QScrollArea, QGridLayout, QComboBox,
     QCheckBox, QDoubleSpinBox, QSizePolicy, QListWidget, QFileDialog
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QColor, QFont, QKeySequence, QPalette
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
+from PyQt6.QtGui import QColor, QFont, QKeySequence, QPalette, QIcon, QPainter, QPixmap
+from PyQt6.QtSvg import QSvgRenderer
 
 try:
-    from ..core.i18n import tr, LANGUAGES, get_language, set_language
+    from ..core.i18n import tr, tr_tab, LANGUAGES, get_language, set_language
 except (ImportError, ModuleNotFoundError):
-    from core.i18n import tr, LANGUAGES, get_language, set_language
+    from core.i18n import tr, tr_tab, LANGUAGES, get_language, set_language
 
 
 # ── Données de configuration ─────────────────────────────────────────────────
@@ -805,11 +806,11 @@ class SettingsPanel(QWidget):
         self.audio_tab = AudioTab(output_devices, output_device, progress_style)
         self.audio_tab.output_changed.connect(self.output_changed)
         self.audio_tab.progress_style_changed.connect(self.progress_style_changed)
-        tabs.addTab(self.audio_tab, tr("settings.tab.audio"))
+        tabs.addTab(self.audio_tab, tr_tab("settings.tab.audio"))
 
         self.shortcuts_tab = ShortcutsTab(shortcuts)
         self.shortcuts_tab.shortcuts_changed.connect(self.shortcuts_changed)
-        tabs.addTab(self.shortcuts_tab, tr("settings.tab.shortcuts"))
+        tabs.addTab(self.shortcuts_tab, tr_tab("settings.tab.shortcuts"))
 
         self.startup_tab = StartupTab(startup_config)
         self.startup_tab.startup_changed.connect(self.startup_changed)
@@ -817,31 +818,65 @@ class SettingsPanel(QWidget):
 
         self.colors_tab = ColorsTab(colors)
         self.colors_tab.colors_changed.connect(self.colors_changed)
-        tabs.addTab(self.colors_tab, tr("settings.tab.colors"))
+        tabs.addTab(self.colors_tab, tr_tab("settings.tab.colors"))
 
         self.fonts_tab = FontsTab(font_cfg)
         self.fonts_tab.font_changed.connect(self.font_changed)
-        tabs.addTab(self.fonts_tab, tr("settings.tab.fonts"))
+        tabs.addTab(self.fonts_tab, tr_tab("settings.tab.fonts"))
 
         self.library_tab = LibraryTab(library_folders)
         self.library_tab.folders_changed.connect(self.folders_changed)
-        tabs.addTab(self.library_tab, tr("settings.tab.library"))
+        tabs.addTab(self.library_tab, tr_tab("settings.tab.library"))
 
         self.language_tab = LanguageTab(language)
         self.language_tab.language_changed.connect(self.language_changed)
-        tabs.addTab(self.language_tab, tr("settings.tab.language"))
+        tabs.addTab(self.language_tab, tr_tab("settings.tab.language"))
 
         layout.addWidget(tabs)
+        tabs.setIconSize(QSize(18, 18))
+        self.set_theme_colors(colors)
+
+    def _tinted_tab_icon(self, name: str, color: str) -> QIcon:
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            name,
+        )
+        if not os.path.isfile(icon_path):
+            return QIcon()
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        QSvgRenderer(icon_path).render(painter)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color))
+        painter.end()
+        return QIcon(pixmap)
+
+    def set_theme_colors(self, colors: dict):
+        """Met à jour la teinte des icônes des onglets de paramètres."""
+        accent = colors.get("accent", DEFAULT_COLORS["accent"])
+        tab_icons = (
+            (self.audio_tab, "surround.svg"),
+            (self.shortcuts_tab, "raccourcis.svg"),
+            (self.startup_tab, "demarrage.svg"),
+            (self.colors_tab, "palette.svg"),
+            (self.fonts_tab, "police.svg"),
+            (self.library_tab, "dossier.svg"),
+            (self.language_tab, "langue.svg"),
+        )
+        for index, (widget, icon_name) in enumerate(tab_icons):
+            self._tabs.setTabIcon(index, self._tinted_tab_icon(icon_name, accent))
 
     def retranslate_ui(self):
         """Remet à jour les textes de ce panneau après un changement de langue à chaud."""
-        self._tabs.setTabText(0, tr("settings.tab.audio"))
-        self._tabs.setTabText(1, tr("settings.tab.shortcuts"))
+        self._tabs.setTabText(0, tr_tab("settings.tab.audio"))
+        self._tabs.setTabText(1, tr_tab("settings.tab.shortcuts"))
         self._tabs.setTabText(2, "Démarrage")
-        self._tabs.setTabText(3, tr("settings.tab.colors"))
-        self._tabs.setTabText(4, tr("settings.tab.fonts"))
-        self._tabs.setTabText(5, tr("settings.tab.library"))
-        self._tabs.setTabText(6, tr("settings.tab.language"))
+        self._tabs.setTabText(3, tr_tab("settings.tab.colors"))
+        self._tabs.setTabText(4, tr_tab("settings.tab.fonts"))
+        self._tabs.setTabText(5, tr_tab("settings.tab.library"))
+        self._tabs.setTabText(6, tr_tab("settings.tab.language"))
         self.language_tab.retranslate()
 
     def get_shortcuts(self) -> dict:

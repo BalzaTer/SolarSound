@@ -79,6 +79,13 @@ def tr(key: str, **kwargs) -> str:
     return text
 
 
+def tr_tab(key: str) -> str:
+    """Renvoie le libellé d'onglet sans son pictogramme intégré à la traduction."""
+    text = tr(key)
+    _, separator, label = text.partition("  ")
+    return label if separator else text
+
+
 # ────────────────────────────────────────────────────────────────────
 # Dictionnaire de traductions.
 #

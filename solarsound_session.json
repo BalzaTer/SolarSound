@@ -630,9 +630,9 @@
     "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Inna Modja\\Love Revolution\\12 Life.mp3"
   ],
   "current_index": 259,
-  "player_position": 0.0,
+  "player_position": 1.486077097505669,
   "play_mode": "RANDOM",
-  "current_tab": 0,
+  "current_tab": 7,
   "library_folders": [
     "D:/Musique/Musique Chaîne HI-FI"
   ],
@@ -799,14 +799,14 @@
     "bg_main": "#0f0d0a",
     "bg_secondary": "#1e1a12",
     "bg_list": "#0c0a07",
-    "accent": "#f5a623",
-    "accent_dark": "#c47d0a",
+    "accent": "#da432c",
+    "accent_dark": "#9c0707",
     "text_primary": "#e8d5a0",
     "text_secondary": "#a08060",
-    "text_muted": "#5a4a28",
+    "text_muted": "#5a2928",
     "border": "#2a2416",
     "border_bright": "#3d3420",
-    "highlight_bg": "#2a2008",
+    "highlight_bg": "#2a0f08",
     "btn_bg": "#1e1a12"
   },
   "font_cfg": {

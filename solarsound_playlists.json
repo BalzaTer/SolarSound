@@ -13474,18 +13474,6 @@
       "cover_path": "",
       "tracks": [
         {
-          "path": "D:/Musique/Musique Chaîne HI-FI\\Techno-Electro\\Daft Punk\\Random Access Memory\\05 - Instant Crush.mp3",
-          "title": "Instant Crush",
-          "artist": "Daft Punk",
-          "album": "Random Access Memories",
-          "duration": 337.65877551020407,
-          "bpm": null,
-          "key": null,
-          "energy": null,
-          "genre": null,
-          "file_size": null
-        },
-        {
           "path": "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Superbus\\La locomotive.mp3",
           "title": "La locomotive",
           "artist": "Superbus",
@@ -13513,7 +13501,7 @@
       "folder_id": null,
       "order": 1,
       "created_at": "2026-10-06T19:09:39.543533",
-      "modified_at": "2026-10-06T19:28:07.080284"
+      "modified_at": "2026-10-06T19:48:58.136539"
     }
   ],
   "folders": [

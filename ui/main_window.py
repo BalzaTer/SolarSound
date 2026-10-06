@@ -45,7 +45,7 @@ try:
     from ..audio.metadata import format_duration, read_metadata, read_cover_art_data
     from ..core.error_logging import append_error_log
     from ..core.volume import SLIDER_MAX, gain_to_slider_value, slider_to_gain
-    from ..core.i18n import tr, set_language, get_language, DEFAULT_LANGUAGE
+    from ..core.i18n import tr, tr_tab, set_language, get_language, DEFAULT_LANGUAGE
 except (ImportError, ModuleNotFoundError):
     # If this module is run directly (python ui/main_window.py), absolute
     # imports like "ui.settings_panel" may fail because the package root
@@ -81,7 +81,7 @@ except (ImportError, ModuleNotFoundError):
     from audio.metadata import format_duration, read_metadata, read_cover_art_data
     from core.error_logging import append_error_log
     from core.volume import SLIDER_MAX, gain_to_slider_value, slider_to_gain
-    from core.i18n import tr, set_language, get_language, DEFAULT_LANGUAGE
+    from core.i18n import tr, tr_tab, set_language, get_language, DEFAULT_LANGUAGE
 
 
 class DetachableTabBar(QTabBar):
@@ -583,6 +583,32 @@ class MainWindow(QMainWindow):
             button.setIcon(self._tinted_icon(name, accent))
         self.btn_play.setIcon(self._tinted_icon("play.svg", play_color))
         self._refresh_favorites_ui()
+        self._refresh_tab_icons()
+        if hasattr(self, "_search_icon_action"):
+            self._search_icon_action.setIcon(self._tinted_icon("loupe.svg", accent))
+
+    def _refresh_tab_icons(self, tabs=None):
+        tabs = tabs or getattr(self, "_tabs", None)
+        if tabs is None:
+            return
+        accent = self._colors.get("accent", DEFAULT_COLORS["accent"])
+        tab_icons = (
+            (self.playlist_widget, "playlist.svg"),
+            (self.video_window, "video.svg"),
+            (self.playlist_manager_panel, "mesplaylists.svg"),
+            (self.spatial_panel, "surround.svg"),
+            (self.equalizer_panel, "egaliseur.svg"),
+            (self.rotation_panel, "rotation.svg"),
+            (self.vinyl_panel, "vinyle.svg"),
+            (self.settings_panel, "parametres.svg"),
+        )
+        tabs.setIconSize(QSize(18, 18))
+        for widget, icon_name in tab_icons:
+            if widget is None:
+                continue
+            index = tabs.indexOf(widget)
+            if index >= 0:
+                tabs.setTabIcon(index, self._tinted_icon(icon_name, accent))
 
     def _set_play_icon(self, playing: bool):
         button_background = QColor(self._colors.get("btn_bg", DEFAULT_COLORS["btn_bg"]))
@@ -706,6 +732,7 @@ class MainWindow(QMainWindow):
         if self.vinyl_panel is not None:
             self.vinyl_panel.set_theme_colors(self._colors)
         self.playlist_widget.set_theme_colors(self._colors)
+        self.settings_panel.set_theme_colors(self._colors)
         self.video_window.controls.set_theme_colors(self._colors)
 
         # ── Volume ───────────────────────────────────────────────────
@@ -946,6 +973,7 @@ class MainWindow(QMainWindow):
         self._tabs.currentChanged.connect(self._on_tab_changed)
         root.addWidget(self._tabs, stretch=1)
         self._refresh_favorites_ui()
+        self._refresh_tab_icons()
 
     def _build_header(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -1283,14 +1311,14 @@ class MainWindow(QMainWindow):
         self.playlist_widget.favorite_toggled.connect(self._on_favorite_requested)
         self.playlist_widget.play_favorites_requested.connect(self._on_play_favorites)
         self.playlist_widget.open_playlist_manager.connect(self._on_open_playlist_manager)
-        tabs.addTab(self.playlist_widget, tr("tab.playlist"))
+        tabs.addTab(self.playlist_widget, tr_tab("tab.playlist"))
 
         # ── Lecteur Vidéo (prioritaire, premier onglet clé) ───────────
         self.video_window = VideoWindow(self.video_engine, self._icons_dir)
         self.video_window.request_prev.connect(self._on_prev)
         self.video_window.request_next.connect(self._on_next)
         self.video_window.request_stop.connect(self._on_stop)
-        tabs.addTab(self.video_window, tr("tab.video"))
+        tabs.addTab(self.video_window, tr_tab("tab.video"))
 
         # ── Mes Playlists (playlists personnalisées avec humeurs) ─────
         self.playlist_manager_panel = PlaylistManagerPanel(
@@ -1301,28 +1329,32 @@ class MainWindow(QMainWindow):
             self._on_load_custom_folder
         )
         self._playlists_tab_index = 2
-        tabs.insertTab(self._playlists_tab_index, self.playlist_manager_panel, tr("tab.my_playlists"))
+        tabs.insertTab(
+            self._playlists_tab_index,
+            self.playlist_manager_panel,
+            tr_tab("tab.my_playlists"),
+        )
 
         # ── Spatialisation ────────────────────────────────────────────
         self.spatial_panel = SpatialPanel(self.engine.config)
         self.spatial_panel.config_changed.connect(self._on_spatial_config_changed)
-        tabs.addTab(self.spatial_panel, tr("tab.surround"))
+        tabs.addTab(self.spatial_panel, tr_tab("tab.surround"))
 
         # ── Egaliseur ────────────────────────────────────────────────
         self.equalizer_panel = EqualizerPanel(self.engine.equalizer_config.__dict__)
         self.equalizer_panel.config_changed.connect(self._on_equalizer_config_changed)
-        tabs.addTab(self.equalizer_panel, tr("tab.equalizer"))
+        tabs.addTab(self.equalizer_panel, tr_tab("tab.equalizer"))
 
         # ── Rotation ─────────────────────────────────────────────────
         self.rotation_panel = RotationPanel(self.engine.config)
         self.rotation_panel.config_changed.connect(self._on_spatial_config_changed)
-        tabs.addTab(self.rotation_panel, tr("tab.rotation"))
+        tabs.addTab(self.rotation_panel, tr_tab("tab.rotation"))
 
         # ── Vinyle ────────────────────────────────────────────────────
         if self.engine.vinyl:
             self.vinyl_panel = VinylPanel(self.engine.vinyl.config)
             self.vinyl_panel.config_changed.connect(self._on_vinyl_config_changed)
-            tabs.addTab(self.vinyl_panel, tr("tab.vinyl"))
+            tabs.addTab(self.vinyl_panel, tr_tab("tab.vinyl"))
         else:
             self.vinyl_panel = None
 
@@ -1345,7 +1377,9 @@ class MainWindow(QMainWindow):
             [(p.name, p.id) for p in self.playlist_manager.get_all_playlists()],
             [(f.name, f.id) for f in self.playlist_manager.get_all_folders()],
         )
-        tabs.addTab(self.settings_panel, tr("tab.settings"))
+        tabs.addTab(self.settings_panel, tr_tab("tab.settings"))
+
+        self._refresh_tab_icons(tabs)
 
         # Activer l'onglet vidéo par défaut (index 1)
         tabs.setCurrentIndex(1)
@@ -1415,9 +1449,18 @@ class MainWindow(QMainWindow):
 
         # ── Recherche (pistes / albums / artistes / playlists) ────────
         self.search_field = QLineEdit()
-        self.search_field.setPlaceholderText("🔍 Rechercher pistes, albums, artistes, playlists…")
+        self.search_field.setPlaceholderText("Rechercher pistes, albums, artistes, playlists…")
         self.search_field.setMinimumWidth(260)
         self.search_field.setClearButtonEnabled(True)
+        self._search_icon_action = QAction(
+            self._tinted_icon("loupe.svg", self._colors.get("accent", "#f5a623")),
+            "",
+            self.search_field,
+        )
+        self.search_field.addAction(
+            self._search_icon_action,
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
         self.search_field.textChanged.connect(self._on_search_text_changed)
         self.search_field.installEventFilter(self)
 
@@ -1600,9 +1643,16 @@ class MainWindow(QMainWindow):
                 continue
             index = tabs.indexOf(widget)
             if index >= 0:
-                tabs.setTabText(index, tr(key))
+                tabs.setTabText(index, tr_tab(key))
 
         self.status_bar.showMessage(tr("status.ready"))
+        self._refresh_tab_icons(tabs)
+        self._search_icon_action.setIcon(
+            self._tinted_icon(
+                "loupe.svg",
+                self._colors.get("accent", DEFAULT_COLORS["accent"]),
+            )
+        )
         self.settings_panel.retranslate_ui()
         self.playlist_manager_panel.retranslate_ui()
 
@@ -2396,6 +2446,7 @@ class MainWindow(QMainWindow):
         if self.vinyl_panel is not None:
             self.vinyl_panel.set_theme_colors(colors)
         self.playlist_widget.set_theme_colors(colors)
+        self.settings_panel.set_theme_colors(colors)
         self.search_popup.set_accent_color(colors.get("accent", "#f5a623"))
         self.video_window.controls.set_theme_colors(colors)
         self._schedule_save()
