@@ -59,18 +59,23 @@ class Playlist:
         self._add_to_shuffle([index])
         return index
 
+    def add_track_batch(self, tracks: List[Track]) -> int:
+        tracks = list(tracks)
+        if not tracks:
+            return 0
+
+        first_index = len(self.tracks)
+        self.tracks.extend(tracks)
+        self._add_to_shuffle(list(range(first_index, len(self.tracks))))
+        return len(tracks)
+
     def add_tracks(self, paths: List[str]) -> int:
-        added = 0
-        new_indices = []
-        for p in paths:
-            ext = os.path.splitext(p)[1].lower()
+        new_tracks = []
+        for path in paths:
+            ext = os.path.splitext(path)[1].lower()
             if ext in self.ALL_FORMATS:
-                self.tracks.append(Track(path=p))
-                new_indices.append(len(self.tracks) - 1)
-                added += 1
-        if new_indices:
-            self._add_to_shuffle(new_indices)
-        return added
+                new_tracks.append(Track(path=path))
+        return self.add_track_batch(new_tracks)
 
     def remove_track(self, index: int):
         if 0 <= index < len(self.tracks):

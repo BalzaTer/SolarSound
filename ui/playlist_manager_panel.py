@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QFrame, QSizePolicy, QAbstractItemView, QInputDialog,
     QSplitter, QMenu, QStackedWidget, QButtonGroup, QStyle
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QObject, QRunnable, QThreadPool
 from PyQt6.QtGui import QPixmap, QIcon, QAction, QKeySequence, QPainter, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 import os
@@ -27,6 +27,30 @@ except (ImportError, ModuleNotFoundError):
 
 
 ROLE = Qt.ItemDataRole.UserRole
+
+
+class _CoverArtLoadSignals(QObject):
+    loaded = pyqtSignal(str, object, object)
+
+
+class _CoverArtLoadTask(QRunnable):
+    def __init__(self, playlist_id, cache_key, track_paths):
+        super().__init__()
+        self.playlist_id = playlist_id
+        self.cache_key = cache_key
+        self.track_paths = track_paths
+        self.signals = _CoverArtLoadSignals()
+
+    def run(self):
+        cover_data = None
+        for path in self.track_paths:
+            try:
+                cover_data = read_cover_art_data(path)
+            except Exception:
+                continue
+            if cover_data:
+                break
+        self.signals.loaded.emit(self.playlist_id, self.cache_key, cover_data)
 
 
 class ReorderableTrackList(QListWidget):
@@ -358,6 +382,8 @@ class PlaylistManagerPanel(QWidget):
     # Émis quand l'utilisateur confirme le chargement d'une playlist perso
     # dans la liste de lecture principale : (playlist_id, action="replace"|"append")
     load_requested = pyqtSignal(str, str)
+    # Chargement groupé : (folder_id, scope="folder"|"recursive")
+    load_folder_requested = pyqtSignal(str, str)
 
     def __init__(self, manager: PlaylistManager, get_library_folders=None, parent=None):
         super().__init__(parent)
@@ -367,6 +393,13 @@ class PlaylistManagerPanel(QWidget):
         self._current_folder_id = None  # dossier sélectionné (item "dossier")
         self._view_mode = "tree"        # "tree" | "details" | "icons"
         self._browse_folder_id = None   # dossier parcouru dans les vues "à plat"
+        self._cover_icon_cache = {}
+        self._cover_workers = {}
+        self._cover_loaded_keys = set()
+        self._cover_loading_enabled = False
+        self._cover_pool = QThreadPool(self)
+        self._cover_pool.setMaxThreadCount(2)
+        self._default_cover_icon = QIcon(self._default_cover_pixmap(QSize(80, 80)))
         self._setup_ui()
         self._connect_signals()
         self.refresh_playlists()
@@ -470,7 +503,7 @@ class PlaylistManagerPanel(QWidget):
             "border: 1px solid #5a4a28; background: rgba(0,0,0,0.15);"
         )
         self.lbl_cover.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_cover.setPixmap(self._default_cover_pixmap(QSize(80, 80)))
+        self.lbl_cover.setPixmap(self._default_cover_icon.pixmap(80, 80))
         self.lbl_cover.setText("")
         header_row.addWidget(self.lbl_cover)
 
@@ -555,6 +588,15 @@ class PlaylistManagerPanel(QWidget):
         self.act_move_to_folder.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self.act_move_to_folder.triggered.connect(self._on_move_to_folder)
 
+        self.act_load_folder = QAction("▶ Lire les playlists du dossier", self)
+        self.act_load_folder_recursive = QAction(
+            "▶ Lire le dossier et ses sous-dossiers", self
+        )
+        self.act_load_folder.triggered.connect(self._on_load_folder)
+        self.act_load_folder_recursive.triggered.connect(
+            lambda: self._on_load_folder("recursive")
+        )
+
         # Les raccourcis ne s'activent que quand l'arbre "Mes Playlists"
         # (ou l'un de ses enfants) a le focus, pour ne pas entrer en
         # conflit avec d'autres raccourcis ailleurs dans l'app (ex :
@@ -577,6 +619,8 @@ class PlaylistManagerPanel(QWidget):
         self.act_move_up.setEnabled(has_selection)
         self.act_move_down.setEnabled(has_selection)
         self.act_move_to_folder.setEnabled(has_playlist)
+        self.act_load_folder.setEnabled(has_folder)
+        self.act_load_folder_recursive.setEnabled(has_folder)
 
         menu = QMenu(self)
         menu.addAction(self.act_new)
@@ -587,6 +631,10 @@ class PlaylistManagerPanel(QWidget):
         menu.addAction(self.act_move_up)
         menu.addAction(self.act_move_down)
         menu.addAction(self.act_move_to_folder)
+        if has_folder:
+            menu.addSeparator()
+            menu.addAction(self.act_load_folder)
+            menu.addAction(self.act_load_folder_recursive)
         return menu
 
     def _show_tree_context_menu(self, pos):
@@ -686,6 +734,8 @@ class PlaylistManagerPanel(QWidget):
             view.select_id("folder", self._current_folder_id)
 
         self.stack_views.setCurrentWidget(view)
+        if self._cover_loading_enabled:
+            self._load_visible_cover_art()
 
     def _on_flat_navigation_changed(self, folder_id):
         """Garde les 2 vues "à plat" synchronisées sur le même dossier parcouru,
@@ -750,7 +800,7 @@ class PlaylistManagerPanel(QWidget):
         if restore_item is not None:
             self.tree_playlists.setCurrentItem(restore_item)
             self._on_selection_changed(restore_item, None)
-        else:
+        elif self._view_mode == "tree":
             first_item = self.tree_playlists.topLevelItem(0)
             if first_item is not None:
                 self.tree_playlists.setCurrentItem(first_item)
@@ -759,25 +809,40 @@ class PlaylistManagerPanel(QWidget):
                 self._current_playlist_id = None
                 self._current_folder_id = None
                 self._refresh_details(None)
+        else:
+            self._current_playlist_id = None
+            self._current_folder_id = None
+            self._refresh_details(None)
 
         # Garder les vues "à plat" synchronisées avec les données, en
         # conservant leur dossier parcouru.
         self.view_details.refresh()
         self.view_icons.refresh()
         if self._view_mode != "tree":
-            if self._current_playlist_id and self.manager.get_playlist(self._current_playlist_id):
-                self._select_playlist_id(self._current_playlist_id)
-            elif self._current_folder_id and self.manager.get_folder(self._current_folder_id):
-                self._select_folder_id(self._current_folder_id)
+            view = self.view_details if self._view_mode == "details" else self.view_icons
+            self._browse_folder_id = view.current_folder_id()
+            playlist = self.manager.get_playlist(previous_playlist_id) if previous_playlist_id else None
+            if playlist and playlist.folder_id == self._browse_folder_id:
+                self._current_playlist_id = playlist.id
+                self._current_folder_id = None
+                view.select_id("playlist", playlist.id)
+            elif previous_folder_id and self._browse_folder_id is None and self.manager.get_folder(previous_folder_id):
+                self._current_playlist_id = None
+                self._current_folder_id = previous_folder_id
+                view.select_id("folder", previous_folder_id)
+            else:
+                self._current_playlist_id = None
+                self._current_folder_id = None
+                self._refresh_details(None)
+        if self._cover_loading_enabled:
+            self._load_visible_cover_art()
 
     def _make_playlist_item(self, playlist):
         item = QTreeWidgetItem([playlist.name or "(Sans nom)"])
         item.setData(0, ROLE, {"type": "playlist", "id": playlist.id})
         # Une playlist n'accepte pas d'enfant (pas de sous-playlist)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
-        icon = self._cover_icon(playlist)
-        if icon:
-            item.setIcon(0, icon)
+        item.setIcon(0, self._default_cover_icon)
         return item
 
     @staticmethod
@@ -805,19 +870,131 @@ class PlaylistManagerPanel(QWidget):
         - sinon la première pochette embarquée trouvée parmi ses pistes
           (pas forcément celle de la première piste).
         """
+        cache_key = (
+            playlist.id,
+            playlist.cover_path,
+            tuple(track.path for track in playlist.tracks),
+        )
+        if cache_key in self._cover_icon_cache:
+            if self._cover_loading_enabled:
+                self._request_cover_art(playlist, cache_key)
+            return self._cover_icon_cache[cache_key]
+
         if playlist.cover_path:
             pixmap = self.manager.cover_handler.load_cover_pixmap(playlist.cover_path)
             if pixmap and not pixmap.isNull():
-                return QIcon(pixmap)
+                icon = QIcon(pixmap)
+                self._cover_icon_cache[cache_key] = icon
+                self._cover_loaded_keys.add(cache_key)
+                return icon
 
-        for track in playlist.tracks:
-            cover_data = read_cover_art_data(track.path)
-            if cover_data:
-                pixmap = QPixmap()
-                if pixmap.loadFromData(cover_data):
-                    return QIcon(pixmap)
+        self._cover_icon_cache[cache_key] = self._default_cover_icon
+        if self._cover_loading_enabled:
+            self._request_cover_art(playlist, cache_key)
+        return self._default_cover_icon
 
-        return QIcon(self._default_cover_pixmap(QSize(80, 80)))
+    def _request_cover_art(self, playlist, cache_key=None):
+        if cache_key is None:
+            cache_key = (
+                playlist.id,
+                playlist.cover_path,
+                tuple(track.path for track in playlist.tracks),
+            )
+        if cache_key in self._cover_loaded_keys or cache_key in self._cover_workers:
+            return
+
+        track_paths = tuple(track.path for track in playlist.tracks)
+        if not track_paths:
+            self._cover_loaded_keys.add(cache_key)
+            return
+
+        worker = _CoverArtLoadTask(playlist.id, cache_key, track_paths)
+        worker.signals.loaded.connect(self._on_cover_art_loaded)
+        self._cover_workers[cache_key] = worker
+        self._cover_pool.start(worker)
+
+    def _load_visible_cover_art(self):
+        if self._view_mode == "tree":
+            visible_items = []
+            for index in range(self.tree_playlists.topLevelItemCount()):
+                item = self.tree_playlists.topLevelItem(index)
+                data = item.data(0, ROLE) or {}
+                if data.get("type") == "playlist":
+                    visible_items.append(item)
+                elif data.get("type") == "folder" and item.isExpanded():
+                    visible_items.extend(
+                        item.child(child_index)
+                        for child_index in range(item.childCount())
+                    )
+        else:
+            view = self.view_details if self._view_mode == "details" else self.view_icons
+            count = view.view.topLevelItemCount() if self._view_mode == "details" else view.view.count()
+            visible_items = [
+                view.view.topLevelItem(index) if self._view_mode == "details" else view.view.item(index)
+                for index in range(count)
+            ]
+
+        for item in visible_items:
+            data = item.data(0, ROLE) if self._view_mode in ("tree", "details") else item.data(ROLE)
+            data = data or {}
+            if data.get("type") == "playlist":
+                playlist = self.manager.get_playlist(data.get("id"))
+                if playlist:
+                    icon = self._cover_icon(playlist)
+                    if self._view_mode == "icons":
+                        item.setIcon(icon)
+                    else:
+                        item.setIcon(0, icon)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._cover_loading_enabled = True
+        self._load_visible_cover_art()
+
+    def _on_cover_art_loaded(self, playlist_id, cache_key, cover_data):
+        self._cover_workers.pop(cache_key, None)
+        self._cover_loaded_keys.add(cache_key)
+        playlist = self.manager.get_playlist(playlist_id)
+        if not playlist:
+            return
+
+        current_key = (
+            playlist.id,
+            playlist.cover_path,
+            tuple(track.path for track in playlist.tracks),
+        )
+        if current_key != cache_key:
+            return
+
+        icon = self._default_cover_icon
+        if cover_data:
+            pixmap = QPixmap()
+            if pixmap.loadFromData(cover_data):
+                icon = QIcon(pixmap)
+        self._cover_icon_cache[cache_key] = icon
+
+        for index in range(self.tree_playlists.topLevelItemCount()):
+            item = self.tree_playlists.topLevelItem(index)
+            for candidate in (item, *(item.child(i) for i in range(item.childCount()))):
+                data = candidate.data(0, ROLE) or {}
+                if data.get("type") == "playlist" and data.get("id") == playlist_id:
+                    candidate.setIcon(0, icon)
+
+        for mode, view in (("details", self.view_details.view), ("icons", self.view_icons.view)):
+            count = view.topLevelItemCount() if mode == "details" else view.count()
+            for index in range(count):
+                item = view.topLevelItem(index) if mode == "details" else view.item(index)
+                data = item.data(0, ROLE) if mode == "details" else item.data(ROLE)
+                data = data or {}
+                if data.get("type") == "playlist" and data.get("id") == playlist_id:
+                    if mode == "details":
+                        item.setIcon(0, icon)
+                    else:
+                        item.setIcon(icon)
+
+        if self._current_playlist_id == playlist_id:
+            self.lbl_cover.setPixmap(icon.pixmap(80, 80))
+            self.lbl_cover.setText("")
 
     # ── Sélection ──────────────────────────────────────────────────
     def _on_folder_expansion_changed(self, item, expanded: bool):
@@ -826,6 +1003,14 @@ class PlaylistManagerPanel(QWidget):
         data = item.data(0, ROLE) or {}
         if data.get("type") == "folder":
             self.manager.set_folder_expanded(data["id"], expanded)
+            if expanded and self._cover_loading_enabled:
+                for index in range(item.childCount()):
+                    child = item.child(index)
+                    child_data = child.data(0, ROLE) or {}
+                    if child_data.get("type") == "playlist":
+                        playlist = self.manager.get_playlist(child_data.get("id"))
+                        if playlist:
+                            child.setIcon(0, self._cover_icon(playlist))
 
     def _on_selection_changed(self, current, previous):
         self._apply_selection(current.data(0, ROLE) if current else None)
@@ -1141,6 +1326,39 @@ class PlaylistManagerPanel(QWidget):
         dialog = PlaylistActionDialog(playlist.name, parent=self)
         if dialog.exec():
             self.load_requested.emit(playlist.id, dialog.action())
+
+    def _on_load_folder(self, scope="folder"):
+        folder = self._get_current_folder()
+        if not folder:
+            return
+        playlists = self._playlists_in_folder(folder.id, recursive=scope == "recursive")
+        if not any(playlist.tracks for playlist in playlists):
+            QMessageBox.information(
+                self, "Dossier vide",
+                "Ce dossier ne contient aucune piste à lire.",
+            )
+            return
+        self.load_folder_requested.emit(folder.id, scope)
+
+    def _playlists_in_folder(self, folder_id, recursive=False):
+        """Retourne les playlists du dossier, avec extension aux sous-dossiers."""
+        folder_ids = {folder_id}
+        if recursive:
+            # PlaylistFolder est actuellement plat; conserver ce parcours
+            # permet d'intégrer une hiérarchie lorsque parent_id sera ajouté.
+            changed = True
+            while changed:
+                changed = False
+                for folder in self.manager.get_all_folders():
+                    parent_id = getattr(folder, "parent_id", None)
+                    if parent_id in folder_ids and folder.id not in folder_ids:
+                        folder_ids.add(folder.id)
+                        changed = True
+        playlists = [
+            playlist for playlist in self.manager.get_all_playlists()
+            if playlist.folder_id in folder_ids
+        ]
+        return sorted(playlists, key=lambda playlist: (playlist.folder_id, playlist.order))
 
     def _on_remove_track(self):
         playlist = self._get_current_playlist()

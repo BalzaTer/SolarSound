@@ -1,7 +1,7 @@
 """Widget de liste de lecture avec drag & drop"""
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLabel, QFileDialog, QInputDialog, QMessageBox,
     QAbstractItemView, QMenu
 )
@@ -44,6 +44,25 @@ class CdMetadataWorker(QThread):
         self.result_ready.emit(metadata, cover_bytes)
 
 
+class PlaylistMetadataWorker(QThread):
+    result_ready = pyqtSignal(object)
+
+    def __init__(self, tracks, parent=None):
+        super().__init__(parent)
+        self.tracks = tuple(tracks)
+
+    def run(self):
+        results = []
+        for track in self.tracks:
+            if self.isInterruptionRequested():
+                break
+            try:
+                results.append((track, read_metadata(track.path)))
+            except Exception:
+                continue
+        self.result_ready.emit(results)
+
+
 class PlaylistWidget(QWidget):
     """Panneau de gestion de la liste de lecture"""
 
@@ -51,6 +70,7 @@ class PlaylistWidget(QWidget):
     playlist_changed = pyqtSignal()
     mood_selected = pyqtSignal(str)      # nom de l'humeur cliquée (génère un Flow)
     open_playlist_manager = pyqtSignal()  # demande de bascule vers l'onglet "Mes Playlists"
+    restored_track_metadata = pyqtSignal(object)
 
     def __init__(self, playlist: Playlist, parent=None):
         super().__init__(parent)
@@ -58,6 +78,10 @@ class PlaylistWidget(QWidget):
         self.playlist = playlist
         self._theme_colors = {}
         self._cd_metadata_worker = None  # référence gardée le temps de la recherche en ligne
+        self._restore_metadata_worker = None
+        app = QApplication.instance()
+        if app:
+            app.aboutToQuit.connect(self._cancel_restore_metadata)
         self._setup_ui()
         self._connect_signals()
 
@@ -264,11 +288,16 @@ class PlaylistWidget(QWidget):
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
             if item.data(Qt.ItemDataRole.UserRole) == path:
-                dur = format_duration(track.duration) if track.duration > 0 else "--:--"
-                artist_part = f" — {track.artist}" if track.artist else ""
-                item.setText(f"{track.title}{artist_part}")
-                item.setToolTip(track.path)
+                self._set_list_item_text(item, track)
                 break
+
+    @staticmethod
+    def _set_list_item_text(item, track: Track):
+        dur = format_duration(track.duration) if track.duration > 0 else "--:--"
+        artist_part = f" — {track.artist}" if track.artist else ""
+        item.setText(f"{track.title}{artist_part}")
+        item.setToolTip(track.path)
+        item.setStatusTip(dur)
 
     # Gestion du glisser-déposer externe (fichiers et dossiers)
     def dragEnterEvent(self, event):
@@ -330,6 +359,59 @@ class PlaylistWidget(QWidget):
             self._add_list_item(track)
         self._update_count()
         self.playlist_changed.emit()
+
+    def restore_files_async(self, paths: list):
+        tracks = [Track(path=path) for path in paths]
+        self.playlist.add_track_batch(tracks)
+        for track in tracks:
+            self._add_list_item(track)
+
+        self._update_count()
+        self.playlist_changed.emit()
+        if not tracks:
+            return
+
+        worker = PlaylistMetadataWorker(tracks, self)
+        worker.result_ready.connect(self._apply_restored_metadata)
+        worker.finished.connect(lambda worker=worker: self._clear_restore_metadata_worker(worker))
+        self._restore_metadata_worker = worker
+        worker.start()
+
+    def _apply_restored_metadata(self, results):
+        active_track_ids = {id(track) for track in self.playlist.tracks}
+        items_by_path = {}
+        for index in range(self.list_widget.count()):
+            item = self.list_widget.item(index)
+            path = item.data(Qt.ItemDataRole.UserRole)
+            items_by_path.setdefault(path, []).append(item)
+
+        current_track = self.playlist.current_track
+        current_track_updated = False
+        for track, meta in results:
+            if id(track) not in active_track_ids:
+                continue
+            track.title = meta.get("title") or os.path.splitext(os.path.basename(track.path))[0]
+            track.artist = meta.get("artist", "")
+            track.album = meta.get("album", "")
+            track.duration = meta.get("duration", 0.0)
+            for item in items_by_path.get(track.path, []):
+                self._set_list_item_text(item, track)
+            if track is current_track:
+                current_track_updated = True
+
+        self._update_count()
+        if current_track_updated:
+            self.restored_track_metadata.emit(current_track)
+
+    def _clear_restore_metadata_worker(self, worker):
+        if self._restore_metadata_worker is worker:
+            self._restore_metadata_worker = None
+
+    def _cancel_restore_metadata(self):
+        worker = self._restore_metadata_worker
+        if worker and worker.isRunning():
+            worker.requestInterruption()
+            worker.wait()
 
     def _add_list_item(self, track: Track):
         dur = format_duration(track.duration) if track.duration > 0 else "--:--"

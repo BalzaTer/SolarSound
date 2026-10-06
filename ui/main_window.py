@@ -763,7 +763,7 @@ class MainWindow(QMainWindow):
                 if os.path.isfile(p) or parse_cd_uri(p)
             ]
             if valid_paths:
-                self.playlist_widget._add_files(valid_paths)
+                self.playlist_widget.restore_files_async(valid_paths)
                 idx = min(state.current_index, len(self.playlist.tracks) - 1)
                 track = self.playlist.set_current(idx)
                 self.playlist_widget.set_active_row(idx)
@@ -1268,6 +1268,7 @@ class MainWindow(QMainWindow):
         self.playlist_widget = PlaylistWidget(self.playlist)
         self.playlist_widget.track_activated.connect(self._on_track_activated)
         self.playlist_widget.playlist_changed.connect(self._on_playlist_changed)
+        self.playlist_widget.restored_track_metadata.connect(self._on_restored_track_metadata)
         self.playlist_widget.mood_selected.connect(self._on_mood_selected)
         self.playlist_widget.open_playlist_manager.connect(self._on_open_playlist_manager)
         tabs.addTab(self.playlist_widget, tr("tab.playlist"))
@@ -1284,6 +1285,9 @@ class MainWindow(QMainWindow):
             self.playlist_manager, get_library_folders=lambda: self._library_folders
         )
         self.playlist_manager_panel.load_requested.connect(self._on_load_custom_playlist)
+        self.playlist_manager_panel.load_folder_requested.connect(
+            self._on_load_custom_folder
+        )
         self._playlists_tab_index = 2
         tabs.insertTab(self._playlists_tab_index, self.playlist_manager_panel, tr("tab.my_playlists"))
 
@@ -1337,12 +1341,13 @@ class MainWindow(QMainWindow):
         return tabs
     def _build_menu(self):
         mb = self.menuBar()
+        self._shortcut_actions = {}
 
         file_menu = mb.addMenu("&Fichier")
         act_open = QAction("&Ouvrir des fichiers…", self)
-        act_open.setShortcut(QKeySequence("Ctrl+O"))
         act_open.triggered.connect(self.playlist_widget._on_add_files)
         file_menu.addAction(act_open)
+        self._shortcut_actions["open_file"] = act_open
 
         act_open_pl = QAction("Ouvrir une &liste…", self)
         act_open_pl.setShortcut(QKeySequence("Ctrl+Shift+O"))
@@ -1355,30 +1360,30 @@ class MainWindow(QMainWindow):
 
         file_menu.addSeparator()
         act_quit = QAction("&Quitter", self)
-        act_quit.setShortcut(QKeySequence("Ctrl+Q"))
         act_quit.triggered.connect(self.close)
         file_menu.addAction(act_quit)
+        self._shortcut_actions["close"] = act_quit
 
         play_menu = mb.addMenu("&Lecture")
         act_pp = QAction("Lecture / &Pause", self)
-        act_pp.setShortcut(Qt.Key.Key_Space)
         act_pp.triggered.connect(self._on_play_pause)
         play_menu.addAction(act_pp)
+        self._shortcut_actions["play_pause"] = act_pp
 
         act_stop = QAction("&Stop", self)
-        act_stop.setShortcut(Qt.Key.Key_Escape)
         act_stop.triggered.connect(self._on_stop)
         play_menu.addAction(act_stop)
+        self._shortcut_actions["stop"] = act_stop
 
         act_next = QAction("&Suivant", self)
-        act_next.setShortcut(Qt.Key.Key_Right)
         act_next.triggered.connect(self._on_next)
         play_menu.addAction(act_next)
+        self._shortcut_actions["next"] = act_next
 
         act_prev = QAction("&Précédent\n", self)
-        act_prev.setShortcut(Qt.Key.Key_Left)
         act_prev.triggered.connect(self._on_prev)
         play_menu.addAction(act_prev)
+        self._shortcut_actions["prev"] = act_prev
 
         view_menu = mb.addMenu("&Affichage")
         self.act_visualizer = QAction("&Animation solaire", self)
@@ -1938,6 +1943,37 @@ class MainWindow(QMainWindow):
         self._tabs.setCurrentIndex(0)
         self.status_bar.showMessage(f'Playlist "{playlist.name}" chargée')
 
+    def _on_load_custom_folder(self, folder_id: str, scope: str):
+        """Charge toutes les playlists d'un dossier dans la liste principale."""
+        folder_ids = {folder_id}
+        if scope == "recursive":
+            changed = True
+            while changed:
+                changed = False
+                for folder in self.playlist_manager.get_all_folders():
+                    parent_id = getattr(folder, "parent_id", None)
+                    if parent_id in folder_ids and folder.id not in folder_ids:
+                        folder_ids.add(folder.id)
+                        changed = True
+
+        playlists = [
+            playlist for playlist in self.playlist_manager.get_all_playlists()
+            if playlist.folder_id in folder_ids and playlist.tracks
+        ]
+        playlists.sort(key=lambda playlist: (playlist.folder_id, playlist.order))
+        tracks = [track for playlist in playlists for track in playlist.tracks]
+        if not tracks:
+            return
+
+        self._load_custom_tracks_into_playlist(tracks, mode="replace")
+        self._tabs.setCurrentIndex(0)
+        folder = self.playlist_manager.get_folder(folder_id)
+        folder_name = folder.name if folder else "Dossier"
+        self.status_bar.showMessage(
+            f'Dossier "{folder_name}" chargé ({len(playlists)} playlists, '
+            f'{len(tracks)} pistes)'
+        )
+
     def _load_custom_tracks_into_playlist(self, tracks, mode: str):
         """Remplace ou ajoute des CustomTrack à la liste de lecture principale."""
         if mode == "replace":
@@ -2298,12 +2334,26 @@ class MainWindow(QMainWindow):
         """Reapplique les raccourcis clavier depuis self._shortcuts."""
         from PyQt6.QtGui import QKeySequence
         sc = self._shortcuts
-        # Les actions du menu sont retrouvées et mises à jour
+        # Toutes les commandes passent par des actions globales : cela évite
+        # que le focus d'un champ ou d'un onglet fasse perdre les raccourcis.
         mapping = {
             'play_pause': self._on_play_pause,
             'stop': self._on_stop,
             'next': self._on_next,
             'prev': self._on_prev,
+            'seek_fwd_5': lambda _checked=False: self._seek_by(5),
+            'seek_bwd_5': lambda _checked=False: self._seek_by(-5),
+            'seek_fwd_60': lambda _checked=False: self._seek_by(60),
+            'seek_bwd_60': lambda _checked=False: self._seek_by(-60),
+            'volume_up': lambda _checked=False: self._change_volume(5),
+            'volume_down': lambda _checked=False: self._change_volume(-5),
+            'mute': self._toggle_mute,
+            'fullscreen': self._toggle_video_fullscreen,
+            'next_frame': self._next_video_frame,
+            'prev_frame': self._prev_video_frame,
+            'speed_up': lambda _checked=False: self._change_video_speed(0.25),
+            'speed_down': lambda _checked=False: self._change_video_speed(-0.25),
+            'speed_reset': lambda _checked=False: self._set_video_speed(1.0),
             'open_file': self.playlist_widget._on_add_files,
             'open_cd': self.playlist_widget._on_add_cd,
             'scan_missing': self.playlist_manager_panel._on_scan_library,
@@ -2330,13 +2380,51 @@ class MainWindow(QMainWindow):
             action = shortcut_actions.get(key)
             if action is None:
                 action = QAction(self)
-                action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
                 action.triggered.connect(callback)
                 shortcut_actions[key] = action
                 self.addAction(action)
+            action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
             action.setShortcut(QKeySequence(sc[key]))
         self._shortcut_actions = shortcut_actions
         self._shortcut_map = sc
+
+    def _seek_by(self, seconds):
+        if self._media_mode == 'video':
+            self.video_engine.seek(max(0, self.video_engine.position_seconds + seconds))
+        else:
+            self.engine.seek(max(0, self.engine.position_seconds + seconds))
+
+    def _change_volume(self, delta):
+        self.sld_volume.setValue(max(50, min(SLIDER_MAX, self.sld_volume.value() + delta)))
+
+    def _toggle_mute(self):
+        if self.sld_volume.value() > 50:
+            self._volume_before_mute = self.sld_volume.value()
+            self.sld_volume.setValue(50)
+        else:
+            self.sld_volume.setValue(getattr(self, '_volume_before_mute', 100))
+
+    def _toggle_video_fullscreen(self):
+        if self._media_mode == 'video':
+            self.video_window._toggle_fullscreen()
+
+    def _next_video_frame(self):
+        if self._media_mode == 'video':
+            self.video_engine.step_forward()
+
+    def _prev_video_frame(self):
+        if self._media_mode == 'video':
+            self.video_engine.step_backward()
+
+    def _change_video_speed(self, delta):
+        if self._media_mode == 'video':
+            speed = max(0.25, min(10.0, self.video_engine.config.speed + delta))
+            self._set_video_speed(speed)
+
+    def _set_video_speed(self, speed):
+        if self._media_mode == 'video':
+            self.video_engine.set_speed(speed)
+            self.video_window.controls.set_speed(speed)
 
     def _activate_tab(self, widget):
         index = self._tabs.indexOf(widget)
@@ -2376,6 +2464,10 @@ class MainWindow(QMainWindow):
     def _on_playlist_changed(self):
         self._update_next_track_panel()
         self._schedule_save()
+
+    def _on_restored_track_metadata(self, track):
+        if self._current_track is track:
+            self._update_track_display(track)
 
     # ══════════════════════════════════════════════════════════════════
     # Clavier global
