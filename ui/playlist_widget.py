@@ -280,25 +280,25 @@ class PlaylistWidget(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(4)
 
-        self.btn_add = QPushButton("＋ Ajouter")
+        self.btn_add = QPushButton("\u2009Ajouter")
         self.btn_add.setToolTip("Ajouter des fichiers à la liste")
         toolbar.addWidget(self.btn_add)
 
-        self.btn_add_folder = QPushButton("📁 Dossier")
+        self.btn_add_folder = QPushButton("\u2009Dossier")
         self.btn_add_folder.setToolTip("Ajouter un dossier entier")
         toolbar.addWidget(self.btn_add_folder)
 
-        self.btn_add_cd = QPushButton("💿 CD audio")
+        self.btn_add_cd = QPushButton("\u2009CD audio")
         self.btn_add_cd.setToolTip("Ajouter les pistes d'un CD audio")
         toolbar.addWidget(self.btn_add_cd)
 
-        self.btn_remove = QPushButton("✕ Retirer")
+        self.btn_remove = QPushButton("\u2009Retirer")
         self.btn_remove.setToolTip("Retirer le morceau sélectionné")
         toolbar.addWidget(self.btn_remove)
 
         toolbar.addStretch()
 
-        self.btn_clear = QPushButton("🗑 Vider")
+        self.btn_clear = QPushButton("\u2009Vider")
         self.btn_clear.setToolTip("Vider la liste")
         toolbar.addWidget(self.btn_clear)
 
@@ -338,15 +338,25 @@ class PlaylistWidget(QWidget):
 
         mood_bar.addStretch()
 
-        self.btn_open_playlist_manager = QPushButton("💾 Mes Playlists →")
+        self.btn_open_playlist_manager = QPushButton("\u2009Mes Playlists")
         self.btn_open_playlist_manager.setToolTip("Gérer vos playlists personnalisées")
         self.btn_open_playlist_manager.clicked.connect(self.open_playlist_manager.emit)
         mood_bar.addWidget(self.btn_open_playlist_manager)
 
-        self.btn_play_favorites = QPushButton("♡ Coups de coeur")
+        self.btn_play_favorites = QPushButton("\u2009Coups de coeur")
         self.btn_play_favorites.setToolTip("Lire la playlist Mes coups de coeur")
         self.btn_play_favorites.clicked.connect(self.play_favorites_requested.emit)
         mood_bar.addWidget(self.btn_play_favorites)
+        for button in (
+            self.btn_add,
+            self.btn_add_folder,
+            self.btn_add_cd,
+            self.btn_remove,
+            self.btn_clear,
+            self.btn_open_playlist_manager,
+            self.btn_play_favorites,
+        ):
+            button.setIconSize(QSize(18, 18))
 
         layout.addLayout(mood_bar)
 
@@ -360,6 +370,7 @@ class PlaylistWidget(QWidget):
         self.list_widget.setStyleSheet(
             "QListWidget::item { padding: 0px; }"
         )
+        self.set_theme_colors(self._theme_colors)
         layout.addWidget(self.list_widget)
 
     def _connect_signals(self):
@@ -737,6 +748,18 @@ class PlaylistWidget(QWidget):
     def set_theme_colors(self, colors: dict):
         self._theme_colors = dict(colors)
         accent = colors.get("accent", "#f5a623")
+        for button, icon_name in (
+            (self.btn_add, "ajout.svg"),
+            (self.btn_add_folder, "dossier.svg"),
+            (self.btn_add_cd, "vinyle.svg"),
+            (self.btn_remove, "retirer.svg"),
+            (self.btn_clear, "corbeille.svg"),
+        ):
+            button.setIcon(self._tinted_icon(icon_name, accent))
+        self.btn_open_playlist_manager.setIcon(
+            self._tinted_icon("mesplaylists.svg", accent)
+        )
+        self.btn_play_favorites.setIcon(self._tinted_icon("heart.svg", accent))
         self.btn_play_favorites.setStyleSheet(f"QPushButton {{ color: {accent}; }}")
         for i in range(self.list_widget.count()):
             row = self.list_widget.itemWidget(self.list_widget.item(i))
@@ -744,6 +767,24 @@ class PlaylistWidget(QWidget):
                 row.set_theme_colors(colors)
         current_row = self.playlist.current_index
         self.set_active_row(current_row if 0 <= current_row < self.list_widget.count() else -1)
+
+    @staticmethod
+    def _tinted_icon(name: str, color: str) -> QIcon:
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            name,
+        )
+        if not os.path.isfile(icon_path):
+            return QIcon()
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        QSvgRenderer(icon_path).render(painter)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color))
+        painter.end()
+        return QIcon(pixmap)
 
     def set_favorite_paths(self, paths):
         self._favorite_paths = {self._normalized_path(path) for path in paths}
