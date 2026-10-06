@@ -98,6 +98,7 @@ class CustomPlaylist:
     order: int = 0  # Position au sein de son dossier (ou de la racine)
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     modified_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    is_favorites: bool = False
 
     def to_dict(self) -> dict:
         """Convertit en dictionnaire JSON"""
@@ -105,6 +106,7 @@ class CustomPlaylist:
             "id": self.id,
             "name": self.name,
             "moods": self.moods,
+            "is_favorites": self.is_favorites,
             "cover_path": self.cover_path,
             "tracks": [track.to_dict() for track in self.tracks],
             "folder_id": self.folder_id,
@@ -121,6 +123,7 @@ class CustomPlaylist:
             id=d.get("id", str(uuid.uuid4())),
             name=d.get("name", ""),
             moods=d.get("moods", []),
+            is_favorites=d.get("is_favorites", False),
             cover_path=d.get("cover_path", ""),
             tracks=tracks,
             folder_id=d.get("folder_id"),

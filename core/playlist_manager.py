@@ -25,6 +25,7 @@ class PlaylistManager:
     """Orchestration centralisée des playlists personnalisées"""
 
     PLAYLISTS_FILENAME = "solarsound_playlists.json"
+    FAVORITES_PLAYLIST_NAME = "Mes coups de coeur"
 
     def __init__(self, app_data_dir: Optional[str] = None):
         """
@@ -225,6 +226,66 @@ class PlaylistManager:
     def get_all_playlists(self) -> List[CustomPlaylist]:
         """Retourne toutes les playlists"""
         return self.library.get_all_playlists()
+
+    def get_favorites_playlist(self, create: bool = False) -> Optional[CustomPlaylist]:
+        """Retourne la playlist de favoris, en adoptant l'ancienne playlist nommée ainsi."""
+        playlist = next((p for p in self.get_all_playlists() if p.is_favorites), None)
+        if playlist is not None:
+            return playlist
+
+        playlist = next(
+            (p for p in self.get_all_playlists() if p.name == self.FAVORITES_PLAYLIST_NAME),
+            None,
+        )
+        if playlist is not None:
+            playlist.is_favorites = True
+            self.save_all()
+            return playlist
+
+        if not create:
+            return None
+
+        playlist = CustomPlaylist(
+            name=self.FAVORITES_PLAYLIST_NAME,
+            is_favorites=True,
+            order=self._next_order_in_scope(None),
+        )
+        self.library.add_playlist(playlist)
+        self.save_all()
+        return playlist
+
+    def is_track_favorite(self, path: str) -> bool:
+        """Indique si le chemin correspond à une piste de la playlist de favoris."""
+        playlist = self.get_favorites_playlist()
+        if not playlist:
+            return False
+        normalized_path = os.path.normcase(os.path.abspath(path))
+        return any(
+            os.path.normcase(os.path.abspath(track.path)) == normalized_path
+            for track in playlist.tracks
+        )
+
+    def set_track_favorite(self, track: CustomTrack, favorite: bool) -> bool:
+        """Ajoute ou retire une piste de la playlist de favoris."""
+        playlist = self.get_favorites_playlist(create=favorite)
+        if playlist is None:
+            return not favorite
+
+        normalized_path = os.path.normcase(os.path.abspath(track.path))
+        existing_index = next(
+            (
+                index for index, saved_track in enumerate(playlist.tracks)
+                if os.path.normcase(os.path.abspath(saved_track.path)) == normalized_path
+            ),
+            None,
+        )
+        if favorite and existing_index is None:
+            playlist.add_track(CustomTrack.from_dict(track.to_dict()))
+        elif not favorite and existing_index is not None:
+            playlist.remove_track(existing_index)
+        else:
+            return True
+        return self.save_all()
 
     def update_playlist(self, playlist_id: str, **kwargs) -> bool:
         """

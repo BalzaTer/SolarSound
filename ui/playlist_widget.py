@@ -3,10 +3,15 @@
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLabel, QFileDialog, QInputDialog, QMessageBox,
-    QAbstractItemView, QMenu
+    QAbstractItemView, QMenu, QStyle, QStyleOptionButton
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QThread
-from PyQt6.QtGui import QIcon, QColor, QFont, QAction
+from PyQt6.QtCore import (
+    Qt, pyqtSignal, QMimeData, QThread, QSize, QRectF, QByteArray,
+)
+from PyQt6.QtGui import (
+    QIcon, QColor, QFont, QAction, QPainter, QPixmap,
+)
+from PyQt6.QtSvg import QSvgRenderer
 import os
 
 try:
@@ -63,12 +68,192 @@ class PlaylistMetadataWorker(QThread):
         self.result_ready.emit(results)
 
 
+class FavoriteButton(QPushButton):
+    """Bouton cœur à icône vectorielle, centrée dans une zone fixe."""
+
+    def __init__(self, favorite=False, accent="#f5a623", framed=False, parent=None):
+        super().__init__(parent)
+        self._favorite = favorite
+        self._accent = accent
+        self._framed = framed
+        self._heart_pixmap = QPixmap()
+        self.setFixedSize(32, 32)
+        if framed:
+            self.setStyleSheet("QPushButton { padding: 0; }")
+        else:
+            self.setStyleSheet(
+                "QPushButton {"
+                "background: transparent; border: none; padding: 0;"
+                "}"
+                "QPushButton:hover { background: transparent; border: none; }"
+            )
+        self.setText("")
+        self.setIcon(QIcon())
+        self._update_heart()
+
+    def set_favorite(self, favorite: bool):
+        self._favorite = favorite
+        self._update_heart()
+        self.update()
+
+    def set_accent(self, accent: str):
+        self._accent = accent
+        self._update_heart()
+        self.update()
+
+    def _update_heart(self):
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            "heart.svg",
+        )
+        with open(icon_path, "rb") as heart_file:
+            svg_data = heart_file.read()
+
+        if not self._favorite:
+            original_fill = b"fill:#f5a623;fill-opacity:1;stroke-width:1.50733"
+            outline_style = (
+                f"fill:none;stroke:{self._accent};stroke-width:4;"
+                "stroke-linejoin:round;stroke-linecap:round"
+            ).encode("ascii")
+            svg_data = svg_data.replace(original_fill, outline_style)
+
+        renderer = QSvgRenderer(QByteArray(svg_data))
+        if not renderer.isValid():
+            raise ValueError(f"Le fichier SVG du coeur est invalide : {icon_path}")
+
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(painter, QRectF(4, 4, 56, 56))
+        if self._favorite:
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceIn
+            )
+            painter.fillRect(pixmap.rect(), QColor(self._accent))
+        painter.end()
+        self._heart_pixmap = pixmap
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self._framed:
+            option = QStyleOptionButton()
+            option.initFrom(self)
+            option.state |= QStyle.StateFlag.State_Raised
+            if self.isDown():
+                option.state |= QStyle.StateFlag.State_Sunken
+            if self.underMouse():
+                option.state |= QStyle.StateFlag.State_MouseOver
+            self.style().drawControl(
+                QStyle.ControlElement.CE_PushButtonBevel,
+                option,
+                painter,
+                self,
+            )
+        center = QRectF(self.rect()).center()
+        icon_rect = QRectF(center.x() - 12, center.y() - 12, 24, 24)
+        painter.drawPixmap(icon_rect, self._heart_pixmap, QRectF(0, 0, 64, 64))
+        painter.end()
+
+
+class PlaylistTrackRow(QWidget):
+    """Affichage d'une piste avec son bouton de favori."""
+
+    favorite_toggled = pyqtSignal(str)
+    track_activated = pyqtSignal()
+
+    def __init__(self, track: Track, favorite: bool, accent: str, parent=None):
+        super().__init__(parent)
+        self.track = track
+        self._favorite = favorite
+        self._active = False
+        self._accent = accent
+        self._text_color = "#e8d5a0"
+        self.setMouseTracking(True)
+        self.setAutoFillBackground(False)
+        self.setStyleSheet("background-color: transparent; border: none;")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 0, 6, 0)
+        layout.setSpacing(4)
+
+        self.lbl_track = QLabel()
+        self.lbl_track.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        layout.addWidget(self.lbl_track, stretch=1)
+
+        self.btn_favorite = FavoriteButton(
+            favorite=favorite, accent=accent, parent=self
+        )
+        self.btn_favorite.clicked.connect(
+            lambda: self.favorite_toggled.emit(self.track.path)
+        )
+        layout.addWidget(
+            self.btn_favorite,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+        self.set_track(track)
+        self.set_favorite(favorite)
+
+    def enterEvent(self, event):
+        self.btn_favorite.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.btn_favorite.setVisible(self._favorite)
+        super().leaveEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.track_activated.emit()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def set_track(self, track: Track):
+        self.track = track
+        artist_part = f" — {track.artist}" if track.artist else ""
+        self._display_name = f"{track.title}{artist_part}"
+        self._refresh_track_label()
+
+    def set_favorite(self, favorite: bool):
+        self._favorite = favorite
+        self.btn_favorite.set_favorite(favorite)
+        self.btn_favorite.setToolTip(
+            "Retirer des coups de coeur" if favorite else "Ajouter aux coups de coeur"
+        )
+        self.btn_favorite.setVisible(favorite or self.underMouse())
+
+    def set_active(self, active: bool):
+        self._active = active
+        self._refresh_track_label()
+
+    def set_theme_colors(self, colors: dict):
+        self._accent = colors.get("accent", "#f5a623")
+        self._text_color = colors.get("text_primary", "#e8d5a0")
+        self.btn_favorite.set_accent(self._accent)
+        self._refresh_track_label()
+
+    def _refresh_track_label(self):
+        prefix = "▶ " if self._active else ""
+        self.lbl_track.setText(prefix + self._display_name)
+        self.lbl_track.setStyleSheet(
+            "background-color: transparent; border: none;"
+            f"color: {self._accent if self._active else self._text_color};"
+        )
+        font = self.lbl_track.font()
+        font.setBold(self._active)
+        self.lbl_track.setFont(font)
+
 class PlaylistWidget(QWidget):
     """Panneau de gestion de la liste de lecture"""
 
     track_activated = pyqtSignal(int)   # index du morceau à jouer
+    favorite_toggled = pyqtSignal(str)
     playlist_changed = pyqtSignal()
     mood_selected = pyqtSignal(str)      # nom de l'humeur cliquée (génère un Flow)
+    play_favorites_requested = pyqtSignal()
     open_playlist_manager = pyqtSignal()  # demande de bascule vers l'onglet "Mes Playlists"
     restored_track_metadata = pyqtSignal(object)
 
@@ -77,6 +262,7 @@ class PlaylistWidget(QWidget):
         self.setAcceptDrops(True)
         self.playlist = playlist
         self._theme_colors = {}
+        self._favorite_paths = set()
         self._cd_metadata_worker = None  # référence gardée le temps de la recherche en ligne
         self._restore_metadata_worker = None
         app = QApplication.instance()
@@ -157,6 +343,11 @@ class PlaylistWidget(QWidget):
         self.btn_open_playlist_manager.clicked.connect(self.open_playlist_manager.emit)
         mood_bar.addWidget(self.btn_open_playlist_manager)
 
+        self.btn_play_favorites = QPushButton("♡ Coups de coeur")
+        self.btn_play_favorites.setToolTip("Lire la playlist Mes coups de coeur")
+        self.btn_play_favorites.clicked.connect(self.play_favorites_requested.emit)
+        mood_bar.addWidget(self.btn_play_favorites)
+
         layout.addLayout(mood_bar)
 
         # ── Liste ─────────────────────────────────────────────────────
@@ -165,6 +356,10 @@ class PlaylistWidget(QWidget):
         self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.list_widget.setAlternatingRowColors(False)
         self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list_widget.setMouseTracking(True)
+        self.list_widget.setStyleSheet(
+            "QListWidget::item { padding: 0px; }"
+        )
         layout.addWidget(self.list_widget)
 
     def _connect_signals(self):
@@ -295,9 +490,14 @@ class PlaylistWidget(QWidget):
     def _set_list_item_text(item, track: Track):
         dur = format_duration(track.duration) if track.duration > 0 else "--:--"
         artist_part = f" — {track.artist}" if track.artist else ""
-        item.setText(f"{track.title}{artist_part}")
         item.setToolTip(track.path)
         item.setStatusTip(dur)
+        list_widget = item.listWidget()
+        row = list_widget.itemWidget(item) if list_widget else None
+        if isinstance(row, PlaylistTrackRow):
+            row.set_track(track)
+        else:
+            item.setText(f"{track.title}{artist_part}")
 
     # Gestion du glisser-déposer externe (fichiers et dossiers)
     def dragEnterEvent(self, event):
@@ -415,16 +615,27 @@ class PlaylistWidget(QWidget):
 
     def _add_list_item(self, track: Track):
         dur = format_duration(track.duration) if track.duration > 0 else "--:--"
-        artist_part = f" — {track.artist}" if track.artist else ""
-        text = f"{track.title}{artist_part}"
-        sub = f"  {dur}"
-
         item = QListWidgetItem()
-        item.setText(text)
         item.setToolTip(track.path)
         item.setData(Qt.ItemDataRole.UserRole, track.path)
         item.setStatusTip(dur)
         self.list_widget.addItem(item)
+        row = PlaylistTrackRow(
+            track,
+            self._normalized_path(track.path) in self._favorite_paths,
+            self._theme_colors.get("accent", "#f5a623"),
+            self.list_widget,
+        )
+        row.favorite_toggled.connect(self.favorite_toggled.emit)
+        row.track_activated.connect(
+            lambda item=item: self.track_activated.emit(self.list_widget.row(item))
+        )
+        item.setSizeHint(QSize(0, 36))
+        self.list_widget.setItemWidget(item, row)
+
+    @staticmethod
+    def _normalized_path(path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
 
     def _on_remove(self):
         row = self.list_widget.currentRow()
@@ -515,31 +726,33 @@ class PlaylistWidget(QWidget):
 
     def set_active_row(self, index: int):
         """Met en évidence le morceau en cours de lecture"""
-        accent = self._theme_colors.get("accent", "#f5a623")
-        text_primary = self._theme_colors.get("text_primary", "#e8d5a0")
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
-            if i == index:
-                item.setForeground(QColor(accent))
-                font = item.font()
-                font.setBold(True)
-                item.setFont(font)
-                item.setText("▶ " + item.text().lstrip("▶ "))
-            else:
-                item.setForeground(QColor(text_primary))
-                font = item.font()
-                font.setBold(False)
-                item.setFont(font)
-                t = item.text()
-                if t.startswith("▶ "):
-                    item.setText(t[2:])
+            row = self.list_widget.itemWidget(item)
+            if isinstance(row, PlaylistTrackRow):
+                row.set_active(i == index)
         if 0 <= index < self.list_widget.count():
             self.list_widget.scrollToItem(self.list_widget.item(index))
 
     def set_theme_colors(self, colors: dict):
         self._theme_colors = dict(colors)
+        accent = colors.get("accent", "#f5a623")
+        self.btn_play_favorites.setStyleSheet(f"QPushButton {{ color: {accent}; }}")
+        for i in range(self.list_widget.count()):
+            row = self.list_widget.itemWidget(self.list_widget.item(i))
+            if isinstance(row, PlaylistTrackRow):
+                row.set_theme_colors(colors)
         current_row = self.playlist.current_index
         self.set_active_row(current_row if 0 <= current_row < self.list_widget.count() else -1)
+
+    def set_favorite_paths(self, paths):
+        self._favorite_paths = {self._normalized_path(path) for path in paths}
+        for i in range(self.list_widget.count()):
+            row = self.list_widget.itemWidget(self.list_widget.item(i))
+            if isinstance(row, PlaylistTrackRow):
+                row.set_favorite(
+                    self._normalized_path(row.track.path) in self._favorite_paths
+                )
 
     def _update_count(self):
         n = len(self.playlist)

@@ -23,7 +23,7 @@ try:
     from .video_window import VideoWindow
     from ..video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
     from .theme import STYLESHEET
-    from .playlist_widget import PlaylistWidget
+    from .playlist_widget import FavoriteButton, PlaylistWidget
     from .playlist_manager_panel import PlaylistManagerPanel
     from .spatial_panel import SpatialPanel
     from .rotation_panel import RotationPanel
@@ -34,7 +34,7 @@ try:
     from ..core.playlist import Playlist, PlayMode, Track
     from ..core.session import SessionManager, SessionState, WindowState
     from ..core.playlist_manager import PlaylistManager
-    from ..core.custom_playlist import MoodEnum
+    from ..core.custom_playlist import CustomTrack, MoodEnum
     from ..core.startup import set_launch_at_startup
     from ..audio.engine import AudioEngine, SpatialConfig
     from ..audio.cd import parse_cd_uri
@@ -59,7 +59,7 @@ except (ImportError, ModuleNotFoundError):
     from ui.video_window import VideoWindow
     from video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
     from ui.theme import STYLESHEET
-    from ui.playlist_widget import PlaylistWidget
+    from ui.playlist_widget import FavoriteButton, PlaylistWidget
     from ui.playlist_manager_panel import PlaylistManagerPanel
     from ui.spatial_panel import SpatialPanel
     from ui.rotation_panel import RotationPanel
@@ -69,7 +69,7 @@ except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, PlayMode, Track
     from core.session import SessionManager, SessionState, WindowState
     from core.playlist_manager import PlaylistManager
-    from core.custom_playlist import MoodEnum
+    from core.custom_playlist import CustomTrack, MoodEnum
     from core.startup import set_launch_at_startup
     from audio.engine import AudioEngine, SpatialConfig
     from ui.equalizer_panel import EqualizerPanel
@@ -582,6 +582,7 @@ class MainWindow(QMainWindow):
         ):
             button.setIcon(self._tinted_icon(name, accent))
         self.btn_play.setIcon(self._tinted_icon("play.svg", play_color))
+        self._refresh_favorites_ui()
 
     def _set_play_icon(self, playing: bool):
         button_background = QColor(self._colors.get("btn_bg", DEFAULT_COLORS["btn_bg"]))
@@ -942,8 +943,9 @@ class MainWindow(QMainWindow):
         root.addLayout(transport)
 
         self._tabs = self._build_tabs()
-        self._tabs.currentChanged.connect(lambda _index: self._schedule_save())
+        self._tabs.currentChanged.connect(self._on_tab_changed)
         root.addWidget(self._tabs, stretch=1)
+        self._refresh_favorites_ui()
 
     def _build_header(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -1104,6 +1106,13 @@ class MainWindow(QMainWindow):
         self.btn_order.setCheckable(False)
         self.btn_order.setFixedSize(32, 32)
 
+        self.btn_favorite_track = FavoriteButton(
+            accent=self._colors["accent"], framed=True
+        )
+        self.btn_favorite_track.setToolTip("Ajouter le morceau aux coups de coeur")
+        self.btn_favorite_track.setFixedSize(32, 32)
+        self.btn_favorite_track.clicked.connect(self._on_current_track_favorite)
+
         self.btn_loop = QPushButton()
         self.btn_loop.setIcon(self._tinted_icon("boucle.svg", self._colors["accent"]))
         self.btn_loop.setIconSize(QSize(18, 18))
@@ -1117,6 +1126,7 @@ class MainWindow(QMainWindow):
 
         mode_layout.addWidget(self.btn_loop)
         mode_layout.addWidget(self.btn_order)
+        mode_layout.addWidget(self.btn_favorite_track)
 
         self.btn_order.clicked.connect(self._on_order_toggle)
         self.btn_loop.clicked.connect(self._on_loop_toggle)
@@ -1270,6 +1280,8 @@ class MainWindow(QMainWindow):
         self.playlist_widget.playlist_changed.connect(self._on_playlist_changed)
         self.playlist_widget.restored_track_metadata.connect(self._on_restored_track_metadata)
         self.playlist_widget.mood_selected.connect(self._on_mood_selected)
+        self.playlist_widget.favorite_toggled.connect(self._on_favorite_requested)
+        self.playlist_widget.play_favorites_requested.connect(self._on_play_favorites)
         self.playlist_widget.open_playlist_manager.connect(self._on_open_playlist_manager)
         tabs.addTab(self.playlist_widget, tr("tab.playlist"))
 
@@ -1930,6 +1942,75 @@ class MainWindow(QMainWindow):
         self._load_custom_tracks_into_playlist(tracks, mode="replace")
         self.status_bar.showMessage(f'Mix "{mood}" généré ({len(tracks)} pistes)')
 
+    def _on_play_favorites(self):
+        playlist = self.playlist_manager.get_favorites_playlist()
+        if not playlist or not playlist.tracks:
+            QMessageBox.information(
+                self, "Coups de coeur",
+                "Ajoutez des morceaux à vos coups de coeur pour créer cette playlist.",
+            )
+            return
+        self._on_load_custom_playlist(playlist.id, "replace")
+
+    def _on_current_track_favorite(self):
+        if self._current_track is not None:
+            self._on_favorite_requested(self._current_track.path)
+
+    def _on_favorite_requested(self, path: str):
+        normalized_path = os.path.normcase(os.path.abspath(path))
+        track = next(
+            (
+                track for track in self.playlist.tracks
+                if os.path.normcase(os.path.abspath(track.path)) == normalized_path
+            ),
+            self._current_track
+            if os.path.normcase(os.path.abspath(
+                getattr(self._current_track, "path", "")
+            )) == normalized_path else None,
+        )
+        if track is None:
+            QMessageBox.warning(
+                self, "Coups de coeur",
+                "Impossible de retrouver ce morceau dans la liste de lecture.",
+            )
+            return
+
+        favorite = not self.playlist_manager.is_track_favorite(path)
+        if not self.playlist_manager.set_track_favorite(
+            CustomTrack.from_dict(track.to_dict()), favorite
+        ):
+            QMessageBox.warning(
+                self, "Coups de coeur",
+                "La modification des coups de coeur n'a pas pu être enregistrée.",
+            )
+            return
+        self._refresh_favorites_ui()
+        self.playlist_manager_panel.refresh_playlists()
+
+    def _refresh_favorites_ui(self):
+        favorites = self.playlist_manager.get_favorites_playlist()
+        favorite_paths = [track.path for track in favorites.tracks] if favorites else []
+        if hasattr(self, "playlist_widget"):
+            self.playlist_widget.set_favorite_paths(favorite_paths)
+        if hasattr(self, "btn_favorite_track"):
+            current_path = getattr(self._current_track, "path", "")
+            is_favorite = bool(
+                current_path and self.playlist_manager.is_track_favorite(current_path)
+            )
+            self.btn_favorite_track.set_favorite(is_favorite)
+            self.btn_favorite_track.setEnabled(bool(current_path))
+            self.btn_favorite_track.setToolTip(
+                "Retirer des coups de coeur" if is_favorite
+                else "Ajouter le morceau aux coups de coeur"
+            )
+            accent = self._colors.get("accent", DEFAULT_COLORS["accent"])
+            self.btn_favorite_track.set_accent(accent)
+
+    def _on_tab_changed(self, index: int):
+        if index == 0:
+            self._refresh_favorites_ui()
+        self._schedule_save()
+
     def _on_open_playlist_manager(self):
         """Bascule vers l'onglet \"Mes Playlists\"."""
         self._tabs.setCurrentIndex(self._playlists_tab_index)
@@ -2056,6 +2137,7 @@ class MainWindow(QMainWindow):
         self._set_track_artwork(track)
         self.setWindowTitle(f"{title} — SolarSound")
         self._update_next_track_panel()
+        self._refresh_favorites_ui()
 
     def _set_track_artwork(self, track):
         self.art_label.setText("")

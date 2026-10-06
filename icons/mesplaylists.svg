@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="256"
+   height="256"
+   viewBox="0 0 67.733332 67.733333"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   sodipodi:docname="mesplaylists.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="2.0334082"
+     inkscape:cx="95.160431"
+     inkscape:cy="113.35648"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="1272"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Calque 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       id="path14"
+       style="fill:#f5a623;fill-opacity:1;stroke:none;stroke-width:20.3402;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1;paint-order:fill markers stroke"
+       d="M 58.384596,0.99025932 C 57.94631,0.98233932 57.40415,1.0522413 56.731455,1.2200417 L 20.658185,7.8958844 C 18.739671,8.4804398 18.257909,9.1623162 18.315696,11.057968 V 44.691069 A 12.140188,11.310288 0 0 0 13.216719,43.644482 12.140188,11.310288 0 0 0 1.0763062,54.955057 12.140188,11.310288 0 0 0 13.216719,66.265632 12.140188,11.310288 0 0 0 25.356195,54.955057 a 12.140188,11.310288 0 0 0 -0.02232,-0.679122 12.140188,11.310288 0 0 0 0,-0.0065 l 0.009,-33.021884 27.640124,-4.918503 0.105134,22.531857 A 12.140188,11.310288 0 0 0 48.851559,38.150172 12.140188,11.310288 0 0 0 36.711146,49.459811 12.140188,11.310288 0 0 0 48.851559,60.770386 12.140188,11.310288 0 0 0 60.991954,49.459811 12.140188,11.310288 0 0 0 60.939927,48.419741 L 60.244999,2.625776 C 60.079557,1.7397346 59.699292,1.0143104 58.384398,0.99029532 Z" />
+  </g>
+</svg>

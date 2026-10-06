@@ -10,6 +10,7 @@
         "Soirée",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -699,6 +700,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -860,6 +862,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1009,6 +1012,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1158,6 +1162,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1331,6 +1336,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1492,6 +1498,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1641,6 +1648,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1809,6 +1817,7 @@
       "id": "433de300-1c73-4d43-be13-68983f7b5a42",
       "name": "Earth, Wind & Fire",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -1917,6 +1926,7 @@
       "id": "2c1f9e60-1654-4b13-b251-8eba6e1eb810",
       "name": "Electric Light Orchestra",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -2169,6 +2179,7 @@
       "id": "23a68dae-ea91-4dcd-bc95-f5b61d49fae9",
       "name": "Jungle",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -2349,6 +2360,7 @@
       "id": "328a3b4f-3dd2-4ea3-83cd-c138b2d5783a",
       "name": "Kaiser Chiefs",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -2481,6 +2493,7 @@
       "id": "bb1bd790-e3fe-47fc-b798-d85a2b528733",
       "name": "Kat Onoma",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -2637,6 +2650,7 @@
       "id": "8ebe12ff-615c-41ea-93c6-44c9217c04a8",
       "name": "Michael Jackson",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -2829,6 +2843,7 @@
       "id": "9c5e5b5a-428c-4041-88ed-0588f506e511",
       "name": "MIKA",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -2985,6 +3000,7 @@
       "id": "ecbc75dd-f3b1-470a-a62d-18d561ffe971",
       "name": "New Order",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -3105,6 +3121,7 @@
       "id": "3bc12038-8f58-4145-9632-5e83d71d62af",
       "name": "Parcels (YT)",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -3441,6 +3458,7 @@
       "id": "4faa2688-bb3a-4179-a6de-2a63f503d6a2",
       "name": "Paul McCartney",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -3597,6 +3615,7 @@
       "id": "5595fce1-4f51-4b10-8f4a-f6380faf69e7",
       "name": "Pony Pony Run Run",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -3813,6 +3832,7 @@
       "id": "5d80f05a-0003-4ab9-a01a-1060b50cbb91",
       "name": "Smash Mouth",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -4185,6 +4205,7 @@
       "id": "5e0a99ac-f471-4d68-a37d-f74a7cd1af18",
       "name": "Superbus",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -4545,6 +4566,7 @@
       "id": "1a9fbe7c-86ad-4e28-b760-fcf671d3e8fd",
       "name": "Syd matters",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -4761,6 +4783,7 @@
       "id": "ad740e8f-90d3-47b9-b013-4ff1d200c123",
       "name": "The Blues Brother",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -5025,6 +5048,7 @@
       "id": "e38ff8eb-d65e-4325-8e7f-b0c6e04b30c9",
       "name": "The Cure",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -5193,6 +5217,7 @@
       "id": "52d5c82c-649a-4ac5-b27d-426f083cbe79",
       "name": "The Doors",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -5325,6 +5350,7 @@
       "id": "9dcb4f4a-28a7-4ec9-a1a8-84e1a86e72fa",
       "name": "The Killers",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -5493,6 +5519,7 @@
       "id": "fe35bc3f-4448-45df-82e0-d9bcea998bf8",
       "name": "The Leisure Society",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -5697,6 +5724,7 @@
       "id": "f7120df3-d1fc-4024-ae75-c0d911d06ac3",
       "name": "TOTO",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -5829,6 +5857,7 @@
       "id": "a0c29730-452d-4386-b3a1-ea8ea091128f",
       "name": "20h02",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -6069,6 +6098,7 @@
       "id": "e674a1cb-3bbd-49fe-9901-969ee6f5dd7b",
       "name": "Arcade Fire",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -6393,6 +6423,7 @@
       "id": "b4e81290-7c42-4b63-bcff-899c618c1995",
       "name": "Arctic Monkey",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -6537,6 +6568,7 @@
       "id": "e390dc4a-111f-4abf-a4fb-02c11f8b4e85",
       "name": "BTS",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -6681,6 +6713,7 @@
       "id": "82aa0d77-671c-4d23-8d8d-74300d285cb9",
       "name": "Coldplay",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -6813,6 +6846,7 @@
       "id": "8acde515-8271-4bfc-b022-72517e873145",
       "name": "Deep Purple",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -7185,6 +7219,7 @@
       "id": "15efbf2b-dbf4-43a1-9868-e55b19634554",
       "name": "Delgres",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -7329,6 +7364,7 @@
       "id": "08582563-cb50-4033-86fd-ef690b3053aa",
       "name": "Die Ärzte",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -7509,6 +7545,7 @@
       "id": "af3c406d-91e9-41f0-9d4f-39cbb9d207c3",
       "name": "Divers Rock",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -7797,6 +7834,7 @@
       "id": "b4ff3698-fd86-48a8-ab92-0dfcdff41516",
       "name": "Tango Café 1930",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -7977,6 +8015,7 @@
       "id": "49b36d79-c0ee-4f44-a2c5-c39909fc8868",
       "name": "John Carpenter",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -8097,6 +8136,7 @@
       "id": "495651a1-b919-4946-883d-737de4b00d91",
       "name": "Jon Hopkins",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -8205,6 +8245,7 @@
       "id": "193afe55-a422-44dc-9be3-047a7534bc10",
       "name": "Remix musique classique",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -8529,6 +8570,7 @@
       "id": "efc99451-c8f9-454a-b096-68de0b89b6b1",
       "name": "Adieu Aru",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -8901,6 +8943,7 @@
       "id": "ea01002f-b11d-4f7a-b2c3-4cd3b13facea",
       "name": "Bonobo",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9057,6 +9100,7 @@
       "id": "27e27635-6515-4fa1-b0f9-dc6f5335784c",
       "name": "Daft Punk 1",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9225,6 +9269,7 @@
       "id": "f2b9af61-d615-437e-a832-99767d8d7805",
       "name": "Daft Punk 2",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9381,6 +9426,7 @@
       "id": "8929049b-8a01-4c01-a948-9bf6e602a899",
       "name": "Daniel Avery",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9561,6 +9607,7 @@
       "id": "500cca09-e2c7-4a7a-9868-372545e1a499",
       "name": "Dubphonic",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9609,6 +9656,7 @@
       "id": "46369ad7-4263-46bd-9640-ce3cbc5067bc",
       "name": "Fakear",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9801,6 +9849,7 @@
       "id": "302934ce-f72f-4c26-9d0b-e3ba9b81ff6c",
       "name": "Guns N' Roses",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9825,6 +9874,7 @@
       "id": "297228d1-7c9f-4302-b2bc-7cb42a976e3d",
       "name": "Big Band Bossa Nova",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -9969,6 +10019,7 @@
       "id": "6d8a75e7-b2fe-4082-8549-e82dedcb3246",
       "name": "Claude Bolling",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -10125,6 +10176,7 @@
       "id": "2005bd03-7d6c-4481-b532-44abb48e5464",
       "name": "Count Basie",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -10281,6 +10333,7 @@
       "id": "f1aaef95-7b12-452c-8fca-aac0b6bc20f6",
       "name": "Duke Ellington",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -10449,6 +10502,7 @@
       "id": "592ecda9-e825-400e-81a3-626e566d23b2",
       "name": "Gig Street",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -10617,6 +10671,7 @@
       "id": "ac2abfba-f7e0-4b69-8c73-4885161a2e95",
       "name": "Martin Taylor",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -10737,6 +10792,7 @@
       "id": "38aaaff5-18a6-4e38-bbed-8bd83496d6ec",
       "name": "Oliver Nelson",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -10869,6 +10925,7 @@
       "id": "ae1872b3-26f7-435d-975e-ae7755b1c3ea",
       "name": "Méditerranées",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -11097,6 +11154,7 @@
       "id": "825cd712-2040-4e7d-bad7-ff5c3a831c87",
       "name": "Jacob collier",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -11553,6 +11611,7 @@
       "id": "42922543-9b0b-4d61-aeee-8993228b6b22",
       "name": "2 Cello",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -11733,6 +11792,7 @@
       "id": "09e43503-349c-474d-9ec6-b1a7658e6f83",
       "name": "Musique Classique",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -11805,6 +11865,7 @@
       "id": "e60656e5-943f-4060-96fa-b488d549adf9",
       "name": "Percussions",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "e60656e5-943f-4060-96fa-b488d549adf9.jpg",
       "tracks": [
         {
@@ -11949,6 +12010,7 @@
       "id": "182ba31a-8437-4cd5-857f-49161287fe51",
       "name": "Musique de Sacha",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "182ba31a-8437-4cd5-857f-49161287fe51.jpg",
       "tracks": [
         {
@@ -12145,6 +12207,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -12349,6 +12412,7 @@
       "id": "3e1bdb71-2130-4653-b4e6-1c5cc1c7d9a7",
       "name": "Phoenix",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -12486,6 +12550,7 @@
         "Chill",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -12726,6 +12791,7 @@
       "id": "a8e9a892-284f-4e43-a8d9-c1b7a3028473",
       "name": "Katy Perry",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -12898,6 +12964,7 @@
         "Soirée",
         "Flow"
       ],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -13246,6 +13313,7 @@
       "id": "9ae19565-7151-4a1a-a6e4-f15031137b9e",
       "name": "Inna Modja",
       "moods": [],
+      "is_favorites": false,
       "cover_path": "",
       "tracks": [
         {
@@ -13397,6 +13465,55 @@
       "order": 35,
       "created_at": "2026-09-19T21:20:18.611419",
       "modified_at": "2026-09-19T21:20:18.611426"
+    },
+    {
+      "id": "ac0b6ee1-8af3-45ae-9eae-424437825f48",
+      "name": "Mes coups de coeur",
+      "moods": [],
+      "is_favorites": true,
+      "cover_path": "",
+      "tracks": [
+        {
+          "path": "D:/Musique/Musique Chaîne HI-FI\\Techno-Electro\\Daft Punk\\Random Access Memory\\05 - Instant Crush.mp3",
+          "title": "Instant Crush",
+          "artist": "Daft Punk",
+          "album": "Random Access Memories",
+          "duration": 337.65877551020407,
+          "bpm": null,
+          "key": null,
+          "energy": null,
+          "genre": null,
+          "file_size": null
+        },
+        {
+          "path": "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Superbus\\La locomotive.mp3",
+          "title": "La locomotive",
+          "artist": "Superbus",
+          "album": "",
+          "duration": 194.069,
+          "bpm": null,
+          "key": null,
+          "energy": null,
+          "genre": null,
+          "file_size": null
+        },
+        {
+          "path": "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Superbus\\L’ancre.mp3",
+          "title": "L’ancre",
+          "artist": "Superbus",
+          "album": "",
+          "duration": 165.8045,
+          "bpm": null,
+          "key": null,
+          "energy": null,
+          "genre": null,
+          "file_size": null
+        }
+      ],
+      "folder_id": null,
+      "order": 1,
+      "created_at": "2026-10-06T19:09:39.543533",
+      "modified_at": "2026-10-06T19:28:07.080284"
     }
   ],
   "folders": [
