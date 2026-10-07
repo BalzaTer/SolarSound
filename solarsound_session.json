@@ -1,29 +1,19 @@
 {
   "version": 2,
   "window": {
-    "x": 0,
-    "y": 23,
-    "width": 1920,
-    "height": 1009,
-    "screen_name": "SONY TV",
     "maximized": true
   },
   "playlist_tracks": [
-    "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Superbus\\La locomotive.mp3",
-    "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Superbus\\L’ancre.mp3",
-    "D:/Musique/Musique Chaîne HI-FI\\Techno-Electro\\Daft Punk\\Random Access Memory\\05 - Instant Crush.mp3",
-    "D:/Musique/Musique Chaîne HI-FI/Pop-Rock/Arcade Fire/Everything Now/02 - Everything Now.mp3"
   ],
-  "current_index": 2,
+  "current_index": 1,
   "player_position": 0.0,
   "play_mode": "RANDOM",
   "current_tab": 0,
   "library_folders": [
-    "D:/Musique/Musique Chaîne HI-FI"
   ],
   "playlist_view_mode": "icons",
   "language": "fr",
-  "volume": 92,
+  "volume": 80,
   "output_device": null,
   "progress_style": "intensity_centered",
   "spatial_config": {
@@ -40,7 +30,7 @@
     "mix_to_lfe": true,
     "lfe_low_pass_hz": 300.0,
     "lfe_gain": 0.21,
-    "master_volume": 0.33113112148259133,
+    "master_volume": 0.06309573444801933,
     "rotation_enabled": false,
     "rotation_speed": 0.1,
     "rotation_spread": 0.5,
@@ -61,13 +51,13 @@
       16000.0
     ],
     "gains": [
-      -2.0,
-      -1.0,
       0.0,
-      2.0,
-      3.0,
-      2.0,
-      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       0.0
     ],
     "free_frequencies": [
@@ -81,13 +71,13 @@
       16000.0
     ],
     "free_gains": [
-      -2.0,
-      -1.0,
       0.0,
-      2.0,
-      3.0,
-      2.0,
-      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
       0.0
     ],
     "presets": {
@@ -132,21 +122,21 @@
         4.0
       ]
     },
-    "current_preset": "Vocal",
+    "current_preset": "Plat",
     "mode": "free"
   },
   "vinyl_config": {
     "enabled": false,
     "motor_speed": 1.0,
-    "motor_random": 0.001,
-    "wow_amount": 0.003,
-    "wow_rate": 0.8,
-    "flutter_amount": 0.001,
-    "flutter_rate": 7.0,
-    "crackle_density": 30.0,
-    "crackle_amplitude": 0.08,
-    "crackle_duration_ms": 3.0,
-    "hiss_level": 0.004
+    "motor_random": 0.0005,
+    "wow_amount": 0.001,
+    "wow_rate": 0.6,
+    "flutter_amount": 0.0003,
+    "flutter_rate": 6.0,
+    "crackle_density": 5.0,
+    "crackle_amplitude": 0.04,
+    "crackle_duration_ms": 2.0,
+    "hiss_level": 0.001
   },
   "shortcuts": {
     "play_pause": "Space",

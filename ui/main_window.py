@@ -4,7 +4,7 @@ import os
 import time
 import sys
 import random
-from typing import List
+from typing import List, Optional
 
 from PyQt6.QtWidgets import (
     QTabBar,
@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QSlider, QTabWidget, QFrame,
     QSizePolicy, QMenuBar, QStatusBar, QMessageBox,
     QFileDialog, QGroupBox, QApplication,
-    QLineEdit, QListWidget, QListWidgetItem, QStyledItemDelegate
+    QLineEdit, QListWidget, QListWidgetItem, QStyledItemDelegate, QProgressBar
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal, QPoint, QEvent, QRect
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter, QCursor
@@ -21,7 +21,7 @@ from PyQt6.QtSvg import QSvgRenderer
 try:
     from .settings_panel import SettingsPanel, build_stylesheet, DEFAULT_SHORTCUTS, DEFAULT_COLORS, DEFAULT_FONT
     from .video_window import VideoWindow
-    from ..video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
+    from ..video.player import VideoEngine, SUPPORTED_AUDIO_FORMATS, SUPPORTED_VIDEO_FORMATS
     from .theme import STYLESHEET
     from .playlist_widget import FavoriteButton, PlaylistWidget
     from .playlist_manager_panel import PlaylistManagerPanel
@@ -57,7 +57,7 @@ except (ImportError, ModuleNotFoundError):
 
     from ui.settings_panel import SettingsPanel, build_stylesheet, DEFAULT_SHORTCUTS, DEFAULT_COLORS, DEFAULT_FONT
     from ui.video_window import VideoWindow
-    from video.player import VideoEngine, SUPPORTED_VIDEO_FORMATS
+    from video.player import VideoEngine, SUPPORTED_AUDIO_FORMATS, SUPPORTED_VIDEO_FORMATS
     from ui.theme import STYLESHEET
     from ui.playlist_widget import FavoriteButton, PlaylistWidget
     from ui.playlist_manager_panel import PlaylistManagerPanel
@@ -898,18 +898,24 @@ class MainWindow(QMainWindow):
     # OUVERTURE VIA "LIRE AVEC"
     # ══════════════════════════════════════════════════════════════════
 
-    def _open_files_from_args(self, paths: List[str]):
+    def _open_files_from_args(
+        self,
+        paths: List[str],
+        *,
+        ask_playlist_mode: bool = False,
+        playlist_mode: Optional[str] = None,
+    ):
         """
         Ouvre les fichiers passés en argument CLI.
         - .playlist → charge la playlist et démarre la lecture
-        - .mp3/.wav → ajoute à la playlist et démarre immédiatement
-        - vidéo → ajoute et lance le lecteur vidéo
+        - fichiers audio/vidéo → ajoute ou remplace la playlist et démarre immédiatement
         """
         playlist_files = [p for p in paths if p.lower().endswith(".playlist")]
-        audio_files    = [p for p in paths if os.path.splitext(p)[1].lower() in Playlist.SUPPORTED_FORMATS]
-        video_files    = [p for p in paths if any(
-            p.lower().endswith(ext) for ext in SUPPORTED_VIDEO_FORMATS
-        )]
+        media_files = [
+            path for path in paths
+            if os.path.splitext(path)[1].lower()
+            in SUPPORTED_AUDIO_FORMATS + SUPPORTED_VIDEO_FORMATS
+        ]
 
         if playlist_files:
             # Charger la première playlist trouvée
@@ -923,24 +929,43 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.status_bar.showMessage(f"Erreur chargement playlist : {e}")
 
-        elif audio_files:
-            self.playlist_widget._add_files(audio_files)
-            if self.playlist.tracks:
-                first_path = audio_files[0]
-                for i, t in enumerate(self.playlist.tracks):
-                    if t.path == first_path:
-                        track = self.playlist.set_current(i)
-                        self._load_and_play(track, i)
-                        break
-        elif video_files:
-            self.playlist_widget._add_files(video_files)
-            if self.playlist.tracks:
-                first_path = video_files[0]
-                for i, t in enumerate(self.playlist.tracks):
-                    if t.path == first_path:
-                        self.playlist.set_current(i)
-                        self._load_and_play_video(t.path)
-                        break
+        elif media_files:
+            mode = playlist_mode
+            if mode is None:
+                mode = self._ask_import_playlist_mode() if ask_playlist_mode else "add"
+            if mode is None:
+                return
+            if mode == "replace":
+                self.playlist.clear()
+                self.playlist_widget.list_widget.clear()
+
+            first_index = len(self.playlist.tracks)
+            self.playlist_widget._add_files(media_files)
+            track = self.playlist.set_current(first_index)
+            if track:
+                self._load_and_play(track, first_index)
+
+    def _ask_import_playlist_mode(self):
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setWindowTitle(tr("open_files.mode.title"))
+        dialog.setText(tr("open_files.mode.message"))
+        add_button = dialog.addButton(
+            tr("open_files.mode.add"), QMessageBox.ButtonRole.AcceptRole
+        )
+        replace_button = dialog.addButton(
+            tr("open_files.mode.replace"), QMessageBox.ButtonRole.DestructiveRole
+        )
+        dialog.addButton(
+            tr("open_files.mode.cancel"), QMessageBox.ButtonRole.RejectRole
+        )
+        dialog.setDefaultButton(add_button)
+        dialog.exec()
+        if dialog.clickedButton() is add_button:
+            return "add"
+        if dialog.clickedButton() is replace_button:
+            return "replace"
+        return None
 
     # ══════════════════════════════════════════════════════════════════
     # Construction UI
@@ -1311,6 +1336,9 @@ class MainWindow(QMainWindow):
         self.playlist_widget.favorite_toggled.connect(self._on_favorite_requested)
         self.playlist_widget.play_favorites_requested.connect(self._on_play_favorites)
         self.playlist_widget.open_playlist_manager.connect(self._on_open_playlist_manager)
+        self.playlist_widget.import_progress_changed.connect(
+            self._on_import_progress_changed
+        )
         tabs.addTab(self.playlist_widget, tr_tab("tab.playlist"))
 
         # ── Lecteur Vidéo (prioritaire, premier onglet clé) ───────────
@@ -1491,6 +1519,35 @@ class MainWindow(QMainWindow):
         self.lbl_library_index_status.setStyleSheet("color: #8a7a58; font-size: 11px;")
         self.lbl_library_index_status.setVisible(False)
         self.status_bar.addPermanentWidget(self.lbl_library_index_status)
+
+        self.lbl_import_progress = QLabel("")
+        self.lbl_import_progress.setStyleSheet("color: #a08060; font-size: 11px;")
+        self.lbl_import_progress.setMinimumWidth(150)
+        self.lbl_import_progress.setVisible(False)
+        self.status_bar.addPermanentWidget(self.lbl_import_progress)
+
+        self.bar_import_progress = QProgressBar()
+        self.bar_import_progress.setRange(0, 1)
+        self.bar_import_progress.setValue(0)
+        self.bar_import_progress.setTextVisible(True)
+        self.bar_import_progress.setFixedSize(130, 16)
+        self.bar_import_progress.setVisible(False)
+        self.status_bar.addPermanentWidget(self.bar_import_progress)
+
+    def _on_import_progress_changed(self, current: int, total: int, path: str):
+        if total <= 0:
+            self.lbl_import_progress.setVisible(False)
+            self.bar_import_progress.setVisible(False)
+            return
+
+        self.lbl_import_progress.setText(
+            f"Importation {current}/{total}: {os.path.basename(path)}"
+        )
+        self.lbl_import_progress.setToolTip(path)
+        self.bar_import_progress.setRange(0, total)
+        self.bar_import_progress.setValue(current)
+        self.lbl_import_progress.setVisible(True)
+        self.bar_import_progress.setVisible(True)
 
     # ══════════════════════════════════════════════════════════════════
     # Recherche (pistes / albums / artistes / playlists)

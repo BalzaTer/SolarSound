@@ -97,6 +97,27 @@ def tr_tab(key: str) -> str:
 # des appels à `tr(...)` au fur et à mesure, panneau par panneau.
 # ────────────────────────────────────────────────────────────────────
 TRANSLATIONS = {
+    "open_files.mode.title": {
+        "fr": "Ouvrir des fichiers",
+        "en": "Open files",
+    },
+    "open_files.mode.message": {
+        "fr": "Que faire des fichiers sélectionnés ?",
+        "en": "What would you like to do with the selected files?",
+    },
+    "open_files.mode.add": {
+        "fr": "Ajouter à la playlist",
+        "en": "Add to playlist",
+    },
+    "open_files.mode.replace": {
+        "fr": "Remplacer la playlist",
+        "en": "Replace playlist",
+    },
+    "open_files.mode.cancel": {
+        "fr": "Annuler",
+        "en": "Cancel",
+    },
+
     # ── Onglets principaux ─────────────────────────────────────────
     "tab.playlist": {
         "fr": "📋  Playlist", "en": "📋  Playlist", "de": "📋  Wiedergabeliste",

@@ -51,6 +51,7 @@ class CdMetadataWorker(QThread):
 
 class PlaylistMetadataWorker(QThread):
     result_ready = pyqtSignal(object)
+    progress = pyqtSignal(int, int, str)
 
     def __init__(self, tracks, parent=None):
         super().__init__(parent)
@@ -58,13 +59,15 @@ class PlaylistMetadataWorker(QThread):
 
     def run(self):
         results = []
-        for track in self.tracks:
+        for current, track in enumerate(self.tracks, start=1):
             if self.isInterruptionRequested():
                 break
             try:
                 results.append((track, read_metadata(track.path)))
             except Exception:
-                continue
+                pass
+            finally:
+                self.progress.emit(current, len(self.tracks), track.path)
         self.result_ready.emit(results)
 
 
@@ -256,6 +259,7 @@ class PlaylistWidget(QWidget):
     play_favorites_requested = pyqtSignal()
     open_playlist_manager = pyqtSignal()  # demande de bascule vers l'onglet "Mes Playlists"
     restored_track_metadata = pyqtSignal(object)
+    import_progress_changed = pyqtSignal(int, int, str)
 
     def __init__(self, playlist: Playlist, parent=None):
         super().__init__(parent)
@@ -265,6 +269,8 @@ class PlaylistWidget(QWidget):
         self._favorite_paths = set()
         self._cd_metadata_worker = None  # référence gardée le temps de la recherche en ligne
         self._restore_metadata_worker = None
+        self._metadata_workers = set()
+        self._metadata_progress = {}
         app = QApplication.instance()
         if app:
             app.aboutToQuit.connect(self._cancel_restore_metadata)
@@ -557,19 +563,13 @@ class PlaylistWidget(QWidget):
             self._add_files(media_paths)
 
     def _add_files(self, paths: list):
-        for path in paths:
-            meta = read_metadata(path)
-            track = Track(
-                path=path,
-                title=meta["title"],
-                artist=meta["artist"],
-                album=meta["album"],
-                duration=meta["duration"],
-            )
-            self.playlist.add_track(track)
+        tracks = [Track(path=path) for path in paths]
+        self.playlist.add_track_batch(tracks)
+        for track in tracks:
             self._add_list_item(track)
         self._update_count()
         self.playlist_changed.emit()
+        self._start_metadata_worker(tracks)
 
     def restore_files_async(self, paths: list):
         tracks = [Track(path=path) for path in paths]
@@ -582,10 +582,25 @@ class PlaylistWidget(QWidget):
         if not tracks:
             return
 
+        self._start_metadata_worker(tracks, restored=True)
+
+    def _start_metadata_worker(self, tracks, *, restored=False):
+        if not tracks:
+            return
         worker = PlaylistMetadataWorker(tracks, self)
         worker.result_ready.connect(self._apply_restored_metadata)
-        worker.finished.connect(lambda worker=worker: self._clear_restore_metadata_worker(worker))
-        self._restore_metadata_worker = worker
+        worker.progress.connect(
+            lambda current, total, path, worker=worker:
+                self._update_import_progress(worker, current, total, path)
+        )
+        worker.finished.connect(
+            lambda worker=worker: self._clear_restore_metadata_worker(worker)
+        )
+        self._metadata_workers.add(worker)
+        self._metadata_progress[worker] = (0, len(tracks), "")
+        self._refresh_import_progress()
+        if restored:
+            self._restore_metadata_worker = worker
         worker.start()
 
     def _apply_restored_metadata(self, results):
@@ -615,10 +630,40 @@ class PlaylistWidget(QWidget):
             self.restored_track_metadata.emit(current_track)
 
     def _clear_restore_metadata_worker(self, worker):
+        self._metadata_workers.discard(worker)
+        self._metadata_progress.pop(worker, None)
         if self._restore_metadata_worker is worker:
             self._restore_metadata_worker = None
+        self._refresh_import_progress()
+
+    def _update_import_progress(self, worker, current, total, path):
+        if worker not in self._metadata_progress:
+            return
+        self._metadata_progress[worker] = (current, total, path)
+        self._refresh_import_progress()
+
+    def _refresh_import_progress(self):
+        if not self._metadata_progress:
+            self.import_progress_changed.emit(0, 0, "")
+            return
+
+        current = sum(progress[0] for progress in self._metadata_progress.values())
+        total = sum(progress[1] for progress in self._metadata_progress.values())
+        active_path = next(
+            (
+                progress[2]
+                for progress in reversed(tuple(self._metadata_progress.values()))
+                if progress[2]
+            ),
+            "",
+        )
+        self.import_progress_changed.emit(current, total, active_path)
 
     def _cancel_restore_metadata(self):
+        for worker in tuple(self._metadata_workers):
+            if worker.isRunning():
+                worker.requestInterruption()
+                worker.wait()
         worker = self._restore_metadata_worker
         if worker and worker.isRunning():
             worker.requestInterruption()

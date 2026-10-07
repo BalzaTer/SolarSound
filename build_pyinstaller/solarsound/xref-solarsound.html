@@ -20,8 +20,10 @@
 imports:
     <a href="#.core.error_logging.append_error_log">.core.error_logging.append_error_log</a>
  &#8226;   <a href="#.core.session.SessionManager">.core.session.SessionManager</a>
+ &#8226;   <a href="#.core.single_instance.SingleInstanceServer">.core.single_instance.SingleInstanceServer</a>
  &#8226;   <a href="#.ui.main_window.MainWindow">.ui.main_window.MainWindow</a>
  &#8226;   <a href="#.ui.splash_screen.SplashScreen">.ui.splash_screen.SplashScreen</a>
+ &#8226;   <a href="#.video.player.ALL_MEDIA_FORMATS">.video.player.ALL_MEDIA_FORMATS</a>
  &#8226;   <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
  &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
  &#8226;   <a href="#PyQt6.QtMultimedia">PyQt6.QtMultimedia</a>
@@ -36,6 +38,7 @@ imports:
  &#8226;   <a href="#core.error_logging">core.error_logging</a>
  &#8226;   <a href="#core.qt_config">core.qt_config</a>
  &#8226;   <a href="#core.session">core.session</a>
+ &#8226;   <a href="#core.single_instance">core.single_instance</a>
  &#8226;   <a href="#ctypes">ctypes</a>
  &#8226;   <a href="#encodings">encodings</a>
  &#8226;   <a href="#encodings._win_cp_codecs">encodings._win_cp_codecs</a>
@@ -191,10 +194,12 @@ imports:
  &#8226;   <a href="#sre_parse">sre_parse</a>
  &#8226;   <a href="#stat">stat</a>
  &#8226;   <a href="#sys">sys</a>
+ &#8226;   <a href="#tempfile">tempfile</a>
  &#8226;   <a href="#traceback">traceback</a>
  &#8226;   <a href="#types">types</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.splash_screen">ui.splash_screen</a>
+ &#8226;   <a href="#video.player">video.player</a>
  &#8226;   <a href="#warnings">warnings</a>
  &#8226;   <a href="#weakref">weakref</a>
 
@@ -497,6 +502,17 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="..core.custom_playlist.CustomTrack"></a>
+  <a target="code" href="" type="text/plain"><tt>..core.custom_playlist.CustomTrack</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="..core.custom_playlist.MoodEnum"></a>
   <a target="code" href="" type="text/plain"><tt>..core.custom_playlist.MoodEnum</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
@@ -573,6 +589,18 @@ imported by:
 imported by:
     <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
+ &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="..core.i18n.tr_tab"></a>
+  <a target="code" href="" type="text/plain"><tt>..core.i18n.tr_tab</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
 
   </div>
@@ -718,6 +746,17 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="..video.player.SUPPORTED_AUDIO_FORMATS"></a>
+  <a target="code" href="" type="text/plain"><tt>..video.player.SUPPORTED_AUDIO_FORMATS</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="..video.player.SUPPORTED_VIDEO_FORMATS"></a>
   <a target="code" href="" type="text/plain"><tt>..video.player.SUPPORTED_VIDEO_FORMATS</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
@@ -764,6 +803,17 @@ imported by:
 </div>
 
 <div class="node">
+  <a name=".core.single_instance.SingleInstanceServer"></a>
+  <a target="code" href="" type="text/plain"><tt>.core.single_instance.SingleInstanceServer</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name=".ui.main_window.MainWindow"></a>
   <a target="code" href="" type="text/plain"><tt>.ui.main_window.MainWindow</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
@@ -777,6 +827,17 @@ imported by:
 <div class="node">
   <a name=".ui.splash_screen.SplashScreen"></a>
   <a target="code" href="" type="text/plain"><tt>.ui.splash_screen.SplashScreen</tt></a>
+<span class="moduletype">InvalidRelativeImport</span>  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name=".video.player.ALL_MEDIA_FORMATS"></a>
+  <a target="code" href="" type="text/plain"><tt>.video.player.ALL_MEDIA_FORMATS</tt></a>
 <span class="moduletype">InvalidRelativeImport</span>  <div class="import">
 imported by:
     <a href="#main.py">main.py</a>
@@ -3081,8 +3142,6 @@ imported by:
 imports:
     <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
  &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
- &#8226;   <a href="#PyQt6.QtMultimedia">PyQt6.QtMultimedia</a>
- &#8226;   <a href="#PyQt6.QtNetwork">PyQt6.QtNetwork</a>
  &#8226;   <a href="#PyQt6.sip">PyQt6.sip</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#pkgutil">pkgutil</a>
@@ -3128,6 +3187,7 @@ imported by:
  &#8226;   <a href="#PyQt6.QtSvg">PyQt6.QtSvg</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#core.i18n">core.i18n</a>
+ &#8226;   <a href="#core.single_instance">core.single_instance</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#ui.equalizer_panel">ui.equalizer_panel</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
@@ -3209,8 +3269,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#PyQt6">PyQt6</a>
- &#8226;   <a href="#PyQt6.QtMultimediaWidgets">PyQt6.QtMultimediaWidgets</a>
+    <a href="#PyQt6.QtMultimediaWidgets">PyQt6.QtMultimediaWidgets</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#video.player">video.player</a>
 
@@ -3263,9 +3322,9 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#PyQt6">PyQt6</a>
- &#8226;   <a href="#PyQt6.QtMultimedia">PyQt6.QtMultimedia</a>
+    <a href="#PyQt6.QtMultimedia">PyQt6.QtMultimedia</a>
  &#8226;   <a href="#PyQt6.QtMultimediaWidgets">PyQt6.QtMultimediaWidgets</a>
+ &#8226;   <a href="#core.single_instance">core.single_instance</a>
 
   </div>
 
@@ -3292,6 +3351,8 @@ imported by:
     <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.playlist_dialogs">ui.playlist_dialogs</a>
  &#8226;   <a href="#ui.playlist_manager_panel">ui.playlist_manager_panel</a>
+ &#8226;   <a href="#ui.playlist_widget">ui.playlist_widget</a>
+ &#8226;   <a href="#ui.settings_panel">ui.settings_panel</a>
  &#8226;   <a href="#ui.video_window">ui.video_window</a>
 
   </div>
@@ -7092,6 +7153,7 @@ imported by:
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.qt_config">core.qt_config</a>
  &#8226;   <a href="#core.session">core.session</a>
+ &#8226;   <a href="#core.single_instance">core.single_instance</a>
  &#8226;   <a href="#core.startup">core.startup</a>
  &#8226;   <a href="#core.volume">core.volume</a>
 
@@ -7304,6 +7366,26 @@ imports:
 imported by:
     <a href="#main.py">main.py</a>
  &#8226;   <a href="#ui.main_window">ui.main_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="core.single_instance"></a>
+  <a target="code" href="///D:/Code/3_Python/SolarSound/SolarSound/core/single_instance.py" type="text/plain"><tt>core.single_instance</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtNetwork">PyQt6.QtNetwork</a>
+ &#8226;   <a href="#core">core</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#os">os</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#main.py">main.py</a>
 
   </div>
 
@@ -12280,6 +12362,7 @@ imported by:
  &#8226;   <a href="#core.playlist">core.playlist</a>
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.session">core.session</a>
+ &#8226;   <a href="#core.single_instance">core.single_instance</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#json.decoder">json.decoder</a>
  &#8226;   <a href="#json.encoder">json.encoder</a>
@@ -21061,6 +21144,7 @@ imported by:
  &#8226;   <a href="#core.playlist_manager">core.playlist_manager</a>
  &#8226;   <a href="#core.qt_config">core.qt_config</a>
  &#8226;   <a href="#core.session">core.session</a>
+ &#8226;   <a href="#core.single_instance">core.single_instance</a>
  &#8226;   <a href="#core.startup">core.startup</a>
  &#8226;   <a href="#ctypes">ctypes</a>
  &#8226;   <a href="#ctypes._aix">ctypes._aix</a>
@@ -23008,6 +23092,7 @@ imported by:
  &#8226;   <a href="#_pyrepl.pager">_pyrepl.pager</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
  &#8226;   <a href="#importlib.resources._common">importlib.resources._common</a>
+ &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#multiprocessing.heap">multiprocessing.heap</a>
  &#8226;   <a href="#multiprocessing.synchronize">multiprocessing.synchronize</a>
  &#8226;   <a href="#multiprocessing.util">multiprocessing.util</a>
@@ -23648,12 +23733,14 @@ imports:
  &#8226;   <a href="#..audio.metadata.read_cover_art_data">..audio.metadata.read_cover_art_data</a>
  &#8226;   <a href="#..audio.metadata.read_metadata">..audio.metadata.read_metadata</a>
  &#8226;   <a href="#..audio.preview_player.PreviewPlayer">..audio.preview_player.PreviewPlayer</a>
+ &#8226;   <a href="#..core.custom_playlist.CustomTrack">..core.custom_playlist.CustomTrack</a>
  &#8226;   <a href="#..core.custom_playlist.MoodEnum">..core.custom_playlist.MoodEnum</a>
  &#8226;   <a href="#..core.error_logging.append_error_log">..core.error_logging.append_error_log</a>
  &#8226;   <a href="#..core.i18n.DEFAULT_LANGUAGE">..core.i18n.DEFAULT_LANGUAGE</a>
  &#8226;   <a href="#..core.i18n.get_language">..core.i18n.get_language</a>
  &#8226;   <a href="#..core.i18n.set_language">..core.i18n.set_language</a>
  &#8226;   <a href="#..core.i18n.tr">..core.i18n.tr</a>
+ &#8226;   <a href="#..core.i18n.tr_tab">..core.i18n.tr_tab</a>
  &#8226;   <a href="#..core.library_scanner.scan_library_folders">..core.library_scanner.scan_library_folders</a>
  &#8226;   <a href="#..core.playlist.PlayMode">..core.playlist.PlayMode</a>
  &#8226;   <a href="#..core.playlist.Playlist">..core.playlist.Playlist</a>
@@ -23666,6 +23753,7 @@ imports:
  &#8226;   <a href="#..core.volume.SLIDER_MAX">..core.volume.SLIDER_MAX</a>
  &#8226;   <a href="#..core.volume.gain_to_slider_value">..core.volume.gain_to_slider_value</a>
  &#8226;   <a href="#..core.volume.slider_to_gain">..core.volume.slider_to_gain</a>
+ &#8226;   <a href="#..video.player.SUPPORTED_AUDIO_FORMATS">..video.player.SUPPORTED_AUDIO_FORMATS</a>
  &#8226;   <a href="#..video.player.SUPPORTED_VIDEO_FORMATS">..video.player.SUPPORTED_VIDEO_FORMATS</a>
  &#8226;   <a href="#..video.player.VideoEngine">..video.player.VideoEngine</a>
  &#8226;   <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
@@ -23787,6 +23875,7 @@ imports:
  &#8226;   <a href="#..core.playlist.Track">..core.playlist.Track</a>
  &#8226;   <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
  &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtSvg">PyQt6.QtSvg</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#audio.cd">audio.cd</a>
  &#8226;   <a href="#audio.cd_metadata">audio.cd_metadata</a>
@@ -23876,8 +23965,10 @@ imports:
  &#8226;   <a href="#..core.i18n.get_language">..core.i18n.get_language</a>
  &#8226;   <a href="#..core.i18n.set_language">..core.i18n.set_language</a>
  &#8226;   <a href="#..core.i18n.tr">..core.i18n.tr</a>
+ &#8226;   <a href="#..core.i18n.tr_tab">..core.i18n.tr_tab</a>
  &#8226;   <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
  &#8226;   <a href="#PyQt6.QtGui">PyQt6.QtGui</a>
+ &#8226;   <a href="#PyQt6.QtSvg">PyQt6.QtSvg</a>
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#core.i18n">core.i18n</a>
  &#8226;   <a href="#json">json</a>
@@ -24505,7 +24596,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#ui.main_window">ui.main_window</a>
+    <a href="#main.py">main.py</a>
+ &#8226;   <a href="#ui.main_window">ui.main_window</a>
  &#8226;   <a href="#ui.video_window">ui.video_window</a>
 
   </div>

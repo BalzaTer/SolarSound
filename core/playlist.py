@@ -172,11 +172,11 @@ class Playlist:
             return
 
         random.shuffle(new_indices)
-        insert_start = self._shuffle_pos + 2
+        insert_start = min(self._shuffle_pos + 2, len(self._shuffle_order))
         for index in new_indices:
             insert_at = random.randint(insert_start, len(self._shuffle_order))
             self._shuffle_order.insert(insert_at, index)
-            insert_start = insert_at + 1
+            insert_start = min(insert_at + 1, len(self._shuffle_order))
 
     def _remove_from_shuffle(self, removed_index: int):
         if not self._shuffle_order:
