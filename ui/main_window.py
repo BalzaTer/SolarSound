@@ -336,6 +336,8 @@ class SearchResultsPopup(QListWidget):
 
 
 class MainWindow(QMainWindow):
+    position_changed = pyqtSignal(float)
+
     def __init__(self, open_files: List[str] = None):
         super().__init__()
         self.playlist = Playlist()
@@ -344,7 +346,8 @@ class MainWindow(QMainWindow):
         self._current_media_path = None
         self._is_handling_error = False
         self._playlist_drop_cursor_active = False
-        self.engine.on_position_changed = self._on_position_changed
+        self.position_changed.connect(self._on_position_changed)
+        self.engine.on_position_changed = self.position_changed.emit
         self.engine.on_track_ended = self._on_track_ended
         self.engine.on_error = self._on_engine_error
 
@@ -370,6 +373,12 @@ class MainWindow(QMainWindow):
         self._library_index_cache: list = []
         self._library_index_last_ui_update = 0.0
         self._preview_player = PreviewPlayer()
+        self._preview_player.excerpt_started.connect(
+            self._on_search_preview_started
+        )
+        self._preview_player.excerpt_failed.connect(
+            self._on_search_preview_failed
+        )
         # État de la pause automatique du lecteur principal pendant un
         # extrait de recherche (voir _on_search_hover_preview) :
         self._preview_paused_audio = False  # AudioEngine mis en pause pour l'extrait
@@ -414,6 +423,7 @@ class MainWindow(QMainWindow):
         # construire l'UI : sinon les onglets seraient créés en français puis
         # retraduits, ce qui se voit au démarrage.
         session = self._session.load()
+        self._color_presets = getattr(session, "color_presets", {}) or {}
         self._startup_config = {
             "enabled": getattr(session, "startup_enabled", False),
             "mode": getattr(session, "startup_mode", "none"),
@@ -691,6 +701,7 @@ class MainWindow(QMainWindow):
             current_index=max(0, self.playlist.current_index),
             player_position=self.engine.position_seconds if self._media_mode == 'audio' else 0.0,
             play_mode=self.playlist.play_mode.name,
+            loop_mode=self._loop_mode.name if self._loop_mode else "OFF",
             current_tab=self._tabs.currentIndex(),
             volume=self.sld_volume.value(),
             output_device=self.engine.output_device,
@@ -705,6 +716,7 @@ class MainWindow(QMainWindow):
         state.startup_value = self._startup_config.get("value", "")
         state.shortcuts = self._shortcuts
         state.colors    = self._colors
+        state.color_presets = self.settings_panel.get_color_presets()
         state.font_cfg  = self._font_cfg
         state.library_folders = self._library_folders
         state.playlist_view_mode = self.playlist_manager_panel.get_view_mode()
@@ -732,6 +744,7 @@ class MainWindow(QMainWindow):
         if self.vinyl_panel is not None:
             self.vinyl_panel.set_theme_colors(self._colors)
         self.playlist_widget.set_theme_colors(self._colors)
+        self.playlist_manager_panel.set_theme_colors(self._colors)
         self.settings_panel.set_theme_colors(self._colors)
         self.video_window.controls.set_theme_colors(self._colors)
 
@@ -830,6 +843,16 @@ class MainWindow(QMainWindow):
         except KeyError:
             mode = PlayMode.SEQUENTIAL
         self._set_play_mode(mode)
+        try:
+            loop_mode_name = getattr(state, "loop_mode", "OFF")
+            self._loop_mode = (
+                PlayMode[loop_mode_name]
+                if loop_mode_name in (PlayMode.LOOP_ALL.name, PlayMode.LOOP_ONE.name)
+                else None
+            )
+        except KeyError:
+            self._loop_mode = None
+        self._apply_play_mode()
         if 0 <= state.current_tab < self._tabs.count():
             self._tabs.setCurrentIndex(state.current_tab)
 
@@ -1174,8 +1197,7 @@ class MainWindow(QMainWindow):
         self.btn_loop.setFixedSize(32, 32)
 
         self._order_mode = PlayMode.SEQUENTIAL
-        self._loop_pref = PlayMode.LOOP_ALL
-        self._sequential_loop_active = False
+        self._loop_mode = None
 
         mode_layout.addWidget(self.btn_loop)
         mode_layout.addWidget(self.btn_order)
@@ -1286,7 +1308,10 @@ class MainWindow(QMainWindow):
             return None
 
         current_index = self.playlist.current_index
-        if self.playlist.play_mode == PlayMode.LOOP_ONE:
+        if (
+            self.playlist.loop_mode == PlayMode.LOOP_ONE
+            or self.playlist.play_mode == PlayMode.LOOP_ONE
+        ):
             return self.playlist.current_track
 
         if self.playlist.play_mode == PlayMode.RANDOM:
@@ -1294,11 +1319,16 @@ class MainWindow(QMainWindow):
             if not order:
                 return tracks[0]
             position = self.playlist._shuffle_pos
+            if position + 1 >= len(order) and self.playlist.loop_mode != PlayMode.LOOP_ALL:
+                return None
             return tracks[order[(position + 1) % len(order)]]
 
         next_index = 0 if current_index < 0 else current_index + 1
         if next_index >= len(tracks):
-            if self.playlist.play_mode != PlayMode.LOOP_ALL:
+            if (
+                self.playlist.play_mode != PlayMode.LOOP_ALL
+                and self.playlist.loop_mode != PlayMode.LOOP_ALL
+            ):
                 return None
             next_index = 0
         return tracks[next_index]
@@ -1390,13 +1420,17 @@ class MainWindow(QMainWindow):
         self.settings_panel = SettingsPanel(
             self._shortcuts, self._colors, self._font_cfg,
             self.engine.output_devices(), self.engine.output_device, self._progress_style,
-            self._library_folders, get_language(), self._startup_config
+            self._library_folders, get_language(), self._startup_config,
+            color_presets=self._color_presets,
         )
         self.settings_panel.output_changed.connect(self._on_output_changed)
         self.settings_panel.startup_changed.connect(self._on_startup_changed)
         self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
         self.settings_panel.shortcuts_changed.connect(self._on_shortcuts_changed)
         self.settings_panel.colors_changed.connect(self._on_colors_changed)
+        self.settings_panel.color_presets_changed.connect(
+            self._on_color_presets_changed
+        )
         self.settings_panel.font_changed.connect(self._on_font_changed)
         self.settings_panel.folders_changed.connect(self._on_library_folders_changed)
         self.settings_panel.language_changed.connect(self._on_language_changed)
@@ -1853,7 +1887,10 @@ class MainWindow(QMainWindow):
 
         self._pause_main_for_preview()
 
-        duration = self._preview_player.play_excerpt(track.path)
+        self._preview_resume_timer.stop()
+        self._preview_player.play_excerpt(track.path)
+
+    def _on_search_preview_started(self, duration: float):
         self._preview_resume_timer.stop()
         if duration > 0:
             # Petite marge pour ne pas couper la reprise juste avant la fin
@@ -1863,6 +1900,11 @@ class MainWindow(QMainWindow):
             # Rien n'a pu être joué (fichier illisible, etc.) : pas la peine
             # de garder le lecteur principal en pause pour rien.
             self._resume_main_after_preview()
+
+    def _on_search_preview_failed(self, message: str):
+        print(f"[PreviewPlayer] Aperçu indisponible : {message}")
+        self._preview_resume_timer.stop()
+        self._resume_main_after_preview()
 
     def _on_search_hover_preview_cancelled(self):
         self._preview_resume_timer.stop()
@@ -2046,8 +2088,17 @@ class MainWindow(QMainWindow):
                 "depuis l'onglet \"Mes Playlists\"."
             )
             return
-        self._load_custom_tracks_into_playlist(tracks, mode="replace")
-        self.status_bar.showMessage(f'Mix "{mood}" généré ({len(tracks)} pistes)')
+        loaded_count = self._load_custom_tracks_into_playlist(
+            tracks, mode="replace"
+        )
+        if not loaded_count:
+            return
+        skipped_count = len(tracks) - loaded_count
+        self.status_bar.showMessage(
+            f'Mix "{mood}" généré ({loaded_count} pistes'
+            + (f", {skipped_count} indisponible(s) ignorée(s)" if skipped_count else "")
+            + ")"
+        )
 
     def _on_play_favorites(self):
         playlist = self.playlist_manager.get_favorites_playlist()
@@ -2127,9 +2178,18 @@ class MainWindow(QMainWindow):
         playlist = self.playlist_manager.get_playlist(playlist_id)
         if not playlist or not playlist.tracks:
             return
-        self._load_custom_tracks_into_playlist(list(playlist.tracks), mode=action)
+        loaded_count = self._load_custom_tracks_into_playlist(
+            list(playlist.tracks), mode=action
+        )
+        if not loaded_count:
+            return
         self._tabs.setCurrentIndex(0)
-        self.status_bar.showMessage(f'Playlist "{playlist.name}" chargée')
+        skipped_count = len(playlist.tracks) - loaded_count
+        self.status_bar.showMessage(
+            f'Playlist "{playlist.name}" chargée ({loaded_count} pistes'
+            + (f", {skipped_count} indisponible(s) ignorée(s)" if skipped_count else "")
+            + ")"
+        )
 
     def _on_load_custom_folder(self, folder_id: str, scope: str):
         """Charge toutes les playlists d'un dossier dans la liste principale."""
@@ -2153,23 +2213,54 @@ class MainWindow(QMainWindow):
         if not tracks:
             return
 
-        self._load_custom_tracks_into_playlist(tracks, mode="replace")
+        loaded_count = self._load_custom_tracks_into_playlist(
+            tracks, mode="replace"
+        )
+        if not loaded_count:
+            return
         self._tabs.setCurrentIndex(0)
         folder = self.playlist_manager.get_folder(folder_id)
         folder_name = folder.name if folder else "Dossier"
         self.status_bar.showMessage(
             f'Dossier "{folder_name}" chargé ({len(playlists)} playlists, '
-            f'{len(tracks)} pistes)'
+            f'{loaded_count} pistes'
+            + (
+                f", {len(tracks) - loaded_count} indisponible(s) ignorée(s)"
+                if loaded_count < len(tracks) else ""
+            )
         )
 
     def _load_custom_tracks_into_playlist(self, tracks, mode: str):
         """Remplace ou ajoute des CustomTrack à la liste de lecture principale."""
+        playable_tracks = []
+        skipped_tracks = 0
+        for track in tracks:
+            path = getattr(track, "path", None)
+            if not isinstance(path, str) or not path or not os.path.isfile(path):
+                skipped_tracks += 1
+                continue
+            playable_tracks.append(track)
+
+        if not playable_tracks:
+            if skipped_tracks:
+                self.status_bar.showMessage(
+                    f"Aucune piste disponible ({skipped_tracks} ignorée(s))", 8000
+                )
+            return 0
+
         if mode == "replace":
             self.playlist.clear()
             self.playlist_widget.list_widget.clear()
-        for track in tracks:
-            self.playlist.add_track(track)
-            self.playlist_widget._add_list_item(track)
+        self.playlist.add_track_batch(playable_tracks)
+
+        list_widget = self.playlist_widget.list_widget
+        list_widget.setUpdatesEnabled(False)
+        try:
+            for track in playable_tracks:
+                self.playlist_widget._add_list_item(track)
+        finally:
+            list_widget.setUpdatesEnabled(True)
+
         self.playlist_widget._update_count()
         self.playlist_widget.playlist_changed.emit()
         if mode == "replace" and self.playlist.tracks:
@@ -2179,6 +2270,11 @@ class MainWindow(QMainWindow):
                 first_track = self.playlist.set_current(0)
             if first_track:
                 self._load_and_play(first_track, self.playlist.current_index)
+        if skipped_tracks:
+            self.status_bar.showMessage(
+                f"{skipped_tracks} piste(s) indisponible(s) ignorée(s)", 8000
+            )
+        return len(playable_tracks)
 
     def _is_video(self, path: str) -> bool:
         return any(path.lower().endswith(ext) for ext in SUPPORTED_VIDEO_FORMATS)
@@ -2358,33 +2454,27 @@ class MainWindow(QMainWindow):
     def _on_order_toggle(self):
         if self._order_mode == PlayMode.SEQUENTIAL:
             self._order_mode = PlayMode.RANDOM
-            self._sequential_loop_active = False
         else:
             self._order_mode = PlayMode.SEQUENTIAL
-            self._sequential_loop_active = False
         self._apply_play_mode()
 
     def _on_loop_toggle(self):
-        if self._loop_pref == PlayMode.LOOP_ALL:
-            self._loop_pref = PlayMode.LOOP_ONE
-            self._sequential_loop_active = True
-        elif self._loop_pref == PlayMode.LOOP_ONE:
-            self._loop_pref = PlayMode.LOOP_ALL
-            self._sequential_loop_active = False
+        if self._loop_mode is None:
+            self._loop_mode = PlayMode.LOOP_ALL
+        elif self._loop_mode == PlayMode.LOOP_ALL:
+            self._loop_mode = PlayMode.LOOP_ONE
         else:
-            self._loop_pref = PlayMode.LOOP_ALL
-            self._sequential_loop_active = True
+            self._loop_mode = None
 
         self._apply_play_mode()
 
     def _apply_play_mode(self):
-        if self._order_mode == PlayMode.RANDOM:
-            mode = PlayMode.RANDOM
-        elif self._sequential_loop_active:
-            mode = self._loop_pref
-        else:
-            mode = PlayMode.SEQUENTIAL
-
+        self.playlist.loop_mode = self._loop_mode
+        mode = (
+            PlayMode.RANDOM
+            if self._order_mode == PlayMode.RANDOM
+            else self._loop_mode or PlayMode.SEQUENTIAL
+        )
         self.playlist.play_mode = mode
         if mode == PlayMode.RANDOM and self.playlist.current_index >= 0:
             self.playlist.set_current(self.playlist.current_index)
@@ -2405,10 +2495,10 @@ class MainWindow(QMainWindow):
             self.btn_order.setIcon(self._tinted_icon('sequential.svg', accent))
             self.btn_order.setToolTip('Lecture séquentielle')
 
-        if not self._sequential_loop_active:
+        if self._loop_mode is None:
             self.btn_loop.setIcon(self._tinted_icon('sequential.svg', accent))
             self.btn_loop.setToolTip('Boucle désactivée')
-        elif self._loop_pref == PlayMode.LOOP_ALL:
+        elif self._loop_mode == PlayMode.LOOP_ALL:
             self.btn_loop.setIcon(self._tinted_icon('boucle.svg', accent))
             self.btn_loop.setToolTip('Boucle sur toute la liste')
         else:
@@ -2418,15 +2508,13 @@ class MainWindow(QMainWindow):
     def _set_play_mode(self, mode: PlayMode):
         if mode == PlayMode.RANDOM:
             self._order_mode = PlayMode.RANDOM
-            self._sequential_loop_active = False
+            self._loop_mode = None
         elif mode == PlayMode.SEQUENTIAL:
             self._order_mode = PlayMode.SEQUENTIAL
-            self._sequential_loop_active = False
-            self._loop_pref = PlayMode.LOOP_ALL
+            self._loop_mode = None
         else:
             self._order_mode = PlayMode.SEQUENTIAL
-            self._loop_pref = mode
-            self._sequential_loop_active = True
+            self._loop_mode = mode
         self._apply_play_mode()
 
     # ══════════════════════════════════════════════════════════════════
@@ -2503,9 +2591,14 @@ class MainWindow(QMainWindow):
         if self.vinyl_panel is not None:
             self.vinyl_panel.set_theme_colors(colors)
         self.playlist_widget.set_theme_colors(colors)
+        self.playlist_manager_panel.set_theme_colors(colors)
         self.settings_panel.set_theme_colors(colors)
         self.search_popup.set_accent_color(colors.get("accent", "#f5a623"))
         self.video_window.controls.set_theme_colors(colors)
+        self._schedule_save()
+
+    def _on_color_presets_changed(self, presets: dict):
+        self._color_presets = presets
         self._schedule_save()
 
     def _on_font_changed(self, font_cfg: dict):
@@ -2735,6 +2828,7 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event):
+        self._preview_player.shutdown()
         self.engine.stop()
         self.video_engine.release()
         self._save_session()

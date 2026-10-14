@@ -47,6 +47,7 @@ class SessionState:
     current_index: int = 0
     player_position: float = 0.0 # Position de lecture (secondes) de la piste courante
     play_mode: str = "SEQUENTIAL"
+    loop_mode: str = "OFF"
     current_tab: int = 1
     library_folders: list = None  # Dossiers de musique locaux (recherche + retrouver pistes déplacées)
     playlist_view_mode: str = "tree"  # "tree" | "details" | "icons" (onglet "Mes Playlists")
@@ -64,6 +65,7 @@ class SessionState:
     # Paramètres UI
     shortcuts: dict = None
     colors: dict = None
+    color_presets: dict = None
     font_cfg: dict = None
     visualizer_enabled: bool = True
     startup_enabled: bool = False
@@ -85,6 +87,8 @@ class SessionState:
             self.shortcuts = {}
         if self.colors is None:
             self.colors = {}
+        if self.color_presets is None:
+            self.color_presets = {}
         if self.font_cfg is None:
             self.font_cfg = {}
 
@@ -108,6 +112,7 @@ class SessionManager:
                 "current_index": state.current_index,
                 "player_position": getattr(state, "player_position", 0.0),
                 "play_mode": state.play_mode,
+                "loop_mode": getattr(state, "loop_mode", "OFF"),
                 "current_tab": state.current_tab,
                 "library_folders": getattr(state, "library_folders", []) or [],
                 "playlist_view_mode": getattr(state, "playlist_view_mode", "tree"),
@@ -120,6 +125,7 @@ class SessionManager:
                 "vinyl_config": getattr(state, "vinyl_config", {}),
                 "shortcuts": getattr(state, "shortcuts", {}),
                 "colors": getattr(state, "colors", {}),
+                "color_presets": getattr(state, "color_presets", {}),
                 "font_cfg": getattr(state, "font_cfg", {}),
                 "visualizer_enabled": getattr(state, "visualizer_enabled", True),
                 "startup_enabled": getattr(state, "startup_enabled", False),
@@ -152,6 +158,12 @@ class SessionManager:
             state.current_index   = data.get("current_index", 0)
             state.player_position = data.get("player_position", 0.0)
             state.play_mode       = data.get("play_mode", "SEQUENTIAL")
+            state.loop_mode       = data.get(
+                "loop_mode",
+                state.play_mode
+                if state.play_mode in ("LOOP_ONE", "LOOP_ALL")
+                else "OFF",
+            )
             state.current_tab     = data.get("current_tab", 1)
             state.library_folders = data.get("library_folders", []) or []
             state.playlist_view_mode = data.get("playlist_view_mode", "tree")
@@ -164,6 +176,8 @@ class SessionManager:
             state.vinyl_config    = data.get("vinyl_config", {})
             state.shortcuts       = data.get("shortcuts", {})
             state.colors          = data.get("colors", {})
+            color_presets = data.get("color_presets", {})
+            state.color_presets = color_presets if isinstance(color_presets, dict) else {}
             state.font_cfg        = data.get("font_cfg", {})
             state.visualizer_enabled = data.get("visualizer_enabled", True)
             state.startup_enabled = data.get("startup_enabled", False)

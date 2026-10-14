@@ -47,9 +47,9 @@ Tout est en Python, et tout est généré par IA, mais ça marche plutôt bien d
 
 - Playlists personnalisées, indépendantes de la liste de lecture en cours : nom, pochette (image importée ou pochette par défaut), et une ou plusieurs **humeurs** parmi `😢 Triste` `💪 Motivation` `🎯 Focus` `😌 Chill` `🎉 Soirée` `🌊 Flow`
 - **3 modes d'affichage**, au choix via les boutons en haut de la colonne de gauche :
-  - `🌳 Arbre` : arborescence dépliable/repliable, dossiers et playlists mêlés
-  - `📋 Détails` : façon explorateur Windows, une ligne par élément (Nom / Type / Pistes), double-clic pour entrer dans un dossier, chemin affiché en haut
-  - `🔲 Icônes` : mêmes règles de navigation que Détails, mais en grosses vignettes carrées
+  - `Arbre` : arborescence dépliable/repliable, dossiers et playlists mêlés
+  - `Détails` : façon explorateur Windows, une ligne par élément (Nom / Type / Pistes), double-clic pour entrer dans un dossier, chemin affiché en haut
+  - `Icônes` : mêmes règles de navigation que Détails, mais en grosses vignettes carrées
   - Le mode choisi est mémorisé d'une session à l'autre
 - **Dossiers** : création (`+ 📁 Nouveau dossier`), glisser-déposer d'une playlist entre dossiers ou vers la racine pour la déplacer/réordonner
 - **Import en masse** : glisser un ou plusieurs dossiers depuis l'explorateur de fichiers directement dans la liste crée automatiquement une playlist par dossier
@@ -135,4 +135,3 @@ L'installation du projet est disponible pour Windows, voir les releases du proje
 
 ### Au démarrage, l'application vous accueillera avec un joli logo :
 <img width="425" height="296" alt="image" src="https://github.com/user-attachments/assets/14aa71e9-b30e-49b9-90d7-e7aaaf894bcd" />
-

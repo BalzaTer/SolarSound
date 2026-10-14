@@ -49,6 +49,7 @@ class Playlist:
         self.tracks: List[Track] = []
         self.current_index: int = -1
         self.play_mode: PlayMode = PlayMode.SEQUENTIAL
+        self.loop_mode: Optional[PlayMode] = None
         self._shuffle_order: List[int] = []
         self._shuffle_pos: int = 0
 
@@ -129,14 +130,19 @@ class Playlist:
     def next_track(self) -> Optional[Track]:
         if not self.tracks:
             return None
-        if self.play_mode == PlayMode.LOOP_ONE:
+        loop_mode = self.loop_mode or (
+            self.play_mode
+            if self.play_mode in (PlayMode.LOOP_ONE, PlayMode.LOOP_ALL)
+            else None
+        )
+        if loop_mode == PlayMode.LOOP_ONE:
             return self.current_track
         if self.play_mode == PlayMode.RANDOM:
-            return self._next_shuffle()
+            return self._next_shuffle(loop=loop_mode == PlayMode.LOOP_ALL)
         # SEQUENTIAL or LOOP_ALL
         nxt = self.current_index + 1
         if nxt >= len(self.tracks):
-            if self.play_mode == PlayMode.LOOP_ALL:
+            if loop_mode == PlayMode.LOOP_ALL:
                 nxt = 0
             else:
                 return None
@@ -146,13 +152,18 @@ class Playlist:
     def prev_track(self) -> Optional[Track]:
         if not self.tracks:
             return None
-        if self.play_mode == PlayMode.LOOP_ONE:
+        loop_mode = self.loop_mode or (
+            self.play_mode
+            if self.play_mode in (PlayMode.LOOP_ONE, PlayMode.LOOP_ALL)
+            else None
+        )
+        if loop_mode == PlayMode.LOOP_ONE:
             return self.current_track
         if self.play_mode == PlayMode.RANDOM:
-            return self._prev_shuffle()
+            return self._prev_shuffle(loop=loop_mode == PlayMode.LOOP_ALL)
         prv = self.current_index - 1
         if prv < 0:
-            if self.play_mode == PlayMode.LOOP_ALL:
+            if loop_mode == PlayMode.LOOP_ALL:
                 prv = len(self.tracks) - 1
             else:
                 prv = 0
@@ -196,17 +207,28 @@ class Playlist:
         else:
             self._shuffle_pos = min(self._shuffle_pos, len(self._shuffle_order) - 1)
 
-    def _next_shuffle(self) -> Optional[Track]:
+    def _next_shuffle(self, loop: bool = True) -> Optional[Track]:
         if not self._shuffle_order:
             self._rebuild_shuffle()
-        self._shuffle_pos = (self._shuffle_pos + 1) % len(self._shuffle_order)
+        next_pos = self._shuffle_pos + 1
+        if next_pos >= len(self._shuffle_order):
+            if not loop and self._shuffle_pos >= 0:
+                return None
+            next_pos = 0
+        self._shuffle_pos = next_pos
         self.current_index = self._shuffle_order[self._shuffle_pos]
         return self.tracks[self.current_index]
 
-    def _prev_shuffle(self) -> Optional[Track]:
+    def _prev_shuffle(self, loop: bool = True) -> Optional[Track]:
         if not self._shuffle_order:
             self._rebuild_shuffle()
-        self._shuffle_pos = (self._shuffle_pos - 1) % len(self._shuffle_order)
+        previous_pos = self._shuffle_pos - 1
+        if previous_pos < 0:
+            if not loop:
+                previous_pos = 0
+            else:
+                previous_pos = len(self._shuffle_order) - 1
+        self._shuffle_pos = previous_pos
         self.current_index = self._shuffle_order[self._shuffle_pos]
         return self.tracks[self.current_index]
 
@@ -215,6 +237,7 @@ class Playlist:
         data = {
             "version": 1,
             "play_mode": self.play_mode.name,
+            "loop_mode": self.loop_mode.name if self.loop_mode else "OFF",
             "current_index": self.current_index,
             "tracks": [t.to_dict() for t in self.tracks],
         }
@@ -231,6 +254,17 @@ class Playlist:
             self.play_mode = PlayMode[data.get("play_mode", "SEQUENTIAL")]
         except KeyError:
             self.play_mode = PlayMode.SEQUENTIAL
+        loop_mode = data.get("loop_mode")
+        if loop_mode in (PlayMode.LOOP_ONE.name, PlayMode.LOOP_ALL.name):
+            self.loop_mode = PlayMode[loop_mode]
+        elif loop_mode == "OFF":
+            self.loop_mode = None
+        else:
+            self.loop_mode = (
+                self.play_mode
+                if self.play_mode in (PlayMode.LOOP_ONE, PlayMode.LOOP_ALL)
+                else None
+            )
         self.current_index = data.get("current_index", 0)
         self._rebuild_shuffle()
 

@@ -1,11 +1,11 @@
 """Dialogs réutilisables pour la gestion des playlists personnalisées"""
 
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QLineEdit, QPushButton,
     QFileDialog, QDialogButtonBox, QWidget,
     QRadioButton, QButtonGroup
 )
-from PyQt6.QtGui import QPixmap, QPainter
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPixmap, QPainter
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtSvg import QSvgRenderer
 import os
@@ -17,13 +17,29 @@ except (ImportError, ModuleNotFoundError):
 
 
 MOOD_ICONS = {
-    MoodEnum.TRISTE.value: "😢",
-    MoodEnum.MOTIVATION.value: "💪",
-    MoodEnum.FOCUS.value: "🎯",
-    MoodEnum.CHILL.value: "😌",
-    MoodEnum.SOIREE.value: "🎉",
-    MoodEnum.FLOW.value: "🌊",
+    MoodEnum.TRISTE.value: "triste.svg",
+    MoodEnum.MOTIVATION.value: "motivation.svg",
+    MoodEnum.FOCUS.value: "focus.svg",
+    MoodEnum.CHILL.value: "chill.svg",
+    MoodEnum.SOIREE.value: "soiree.svg",
+    MoodEnum.FLOW.value: "flow.svg",
 }
+
+
+def mood_icon(mood, color=None):
+    icons_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "icons",
+    )
+    icon_path = os.path.join(icons_dir, MOOD_ICONS[mood])
+    pixmap = QPixmap(64, 64)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    QSvgRenderer(icon_path).render(painter)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color or "#f5a623"))
+    painter.end()
+    return QIcon(pixmap)
 
 
 class MoodChipsWidget(QWidget):
@@ -33,20 +49,45 @@ class MoodChipsWidget(QWidget):
         super().__init__(parent)
         selected_moods = selected_moods or []
         self._buttons = {}
+        self._accent_color = self._theme_color("accent", "#f5a623")
+        self._selected_color = self._theme_color("bg_main", "#0f0d0a")
 
-        layout = QHBoxLayout(self)
+        layout = QGridLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        for mood in MoodEnum.get_all_moods():
-            icon = MOOD_ICONS.get(mood, "")
-            btn = QPushButton(f"{icon} {mood}")
+        for index, mood in enumerate(MoodEnum.get_all_moods()):
+            text = f" {mood}"
+            btn = QPushButton(text)
+            icon_color = self._selected_color if mood in selected_moods else self._accent_color
+            btn.setIcon(mood_icon(mood, icon_color))
+            btn.setIconSize(QSize(20, 20))
+            btn.setStyleSheet("QPushButton { padding: 4px 8px; }")
             btn.setCheckable(True)
             btn.setChecked(mood in selected_moods)
-            layout.addWidget(btn)
+            bold_font = QFont(btn.font())
+            bold_font.setBold(True)
+            text_width = QFontMetrics(bold_font).horizontalAdvance(text)
+            btn.setMinimumWidth(btn.iconSize().width() + text_width + 18)
+            btn.toggled.connect(
+                lambda checked, mood=mood, button=btn: button.setIcon(
+                    mood_icon(
+                        mood,
+                        self._selected_color if checked else self._accent_color,
+                    )
+                )
+            )
+            layout.addWidget(btn, index // 3, index % 3)
             self._buttons[mood] = btn
 
-        layout.addStretch()
+    def _theme_color(self, name, default):
+        parent = self.parentWidget()
+        while parent is not None:
+            colors = getattr(parent, "_colors", None)
+            if colors:
+                return colors.get(name, default)
+            parent = parent.parentWidget()
+        return default
 
     def selected_moods(self):
         """Retourne la liste des humeurs actuellement cochées"""

@@ -30,5 +30,38 @@ class PlaylistShuffleTests(unittest.TestCase):
         self.assertEqual(sorted(playlist._shuffle_order), list(range(8)))
 
 
+class PlaylistIndependentLoopTests(unittest.TestCase):
+    def make_random_playlist(self):
+        playlist = Playlist()
+        playlist.add_track_batch([Track(path=f"{index}.mp3") for index in range(3)])
+        playlist.play_mode = PlayMode.RANDOM
+        playlist._shuffle_order = [0, 1, 2]
+        playlist._shuffle_pos = -1
+        return playlist
+
+    def test_random_order_without_loop_stops_at_end(self):
+        playlist = self.make_random_playlist()
+
+        self.assertEqual(playlist.next_track().path, "0.mp3")
+        self.assertEqual(playlist.next_track().path, "1.mp3")
+        self.assertEqual(playlist.next_track().path, "2.mp3")
+        self.assertIsNone(playlist.next_track())
+
+    def test_random_order_with_loop_all_wraps(self):
+        playlist = self.make_random_playlist()
+        playlist.loop_mode = PlayMode.LOOP_ALL
+
+        for expected in ("0.mp3", "1.mp3", "2.mp3", "0.mp3"):
+            self.assertEqual(playlist.next_track().path, expected)
+
+    def test_random_order_with_loop_one_repeats_current_track(self):
+        playlist = self.make_random_playlist()
+        playlist.loop_mode = PlayMode.LOOP_ONE
+        playlist.set_current(1)
+
+        self.assertEqual(playlist.next_track().path, "1.mp3")
+        self.assertEqual(playlist.prev_track().path, "1.mp3")
+
+
 if __name__ == "__main__":
     unittest.main()

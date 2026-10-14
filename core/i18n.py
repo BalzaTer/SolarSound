@@ -197,20 +197,20 @@ TRANSLATIONS = {
 
     # ── Panneau "Mes Playlists" : mode d'affichage ──────────────────
     "playlists.view.tree": {
-        "fr": "🌳 Arbre", "en": "🌳 Tree", "de": "🌳 Baum", "es": "🌳 Árbol", "it": "🌳 Albero",
-        "pt": "🌳 Árvore", "zh": "🌳 树状", "ja": "🌳 ツリー", "co": "🌳 Arburu", "nl": "🌳 Boom", "hi": "🌳 ट्री",
+        "fr": "Arbre", "en": "Tree", "de": "Baum", "es": "Árbol", "it": "Albero",
+        "pt": "Árvore", "zh": "树状", "ja": "ツリー", "co": "Arburu", "nl": "Boom", "hi": "ट्री",
     },
     "playlists.view.details": {
-        "fr": "📋 Détails", "en": "📋 Details", "de": "📋 Details", "es": "📋 Detalles", "it": "📋 Dettagli",
-        "pt": "📋 Detalhes", "zh": "📋 详细信息", "ja": "📋 詳細", "co": "📋 Dettagli", "nl": "📋 Details", "hi": "📋 विवरण",
+        "fr": "Détails", "en": "Details", "de": "Details", "es": "Detalles", "it": "Dettagli",
+        "pt": "Detalhes", "zh": "详细信息", "ja": "詳細", "co": "Dettagli", "nl": "Details", "hi": "विवरण",
     },
     "playlists.view.icons": {
-        "fr": "🔲 Icônes", "en": "🔲 Icons", "de": "🔲 Symbole", "es": "🔲 Iconos", "it": "🔲 Icone",
-        "pt": "🔲 Ícones", "zh": "🔲 图标", "ja": "🔲 アイコン", "co": "🔲 Iconi", "nl": "🔲 Pictogrammen", "hi": "🔲 आइकन",
+        "fr": "Icônes", "en": "Icons", "de": "Symbole", "es": "Iconos", "it": "Icone",
+        "pt": "Ícones", "zh": "图标", "ja": "アイコン", "co": "Iconi", "nl": "Pictogrammen", "hi": "आइकन",
     },
     "playlists.root": {
-        "fr": "🏠 Racine", "en": "🏠 Root", "de": "🏠 Stammverzeichnis", "es": "🏠 Raíz", "it": "🏠 Radice",
-        "pt": "🏠 Raiz", "zh": "🏠 根目录", "ja": "🏠 ルート", "co": "🏠 Radica", "nl": "🏠 Basis", "hi": "🏠 रूट",
+        "fr": "Racine", "en": "Root", "de": "Stammverzeichnis", "es": "Raíz", "it": "Radice",
+        "pt": "Raiz", "zh": "根目录", "ja": "ルート", "co": "Radica", "nl": "Basis", "hi": "रूट",
     },
 
     "playlists.up_tooltip": {

@@ -12,7 +12,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QGroupBox,
     QLabel, QPushButton, QLineEdit, QFontComboBox, QSpinBox,
     QColorDialog, QFrame, QScrollArea, QGridLayout, QComboBox,
-    QCheckBox, QDoubleSpinBox, QSizePolicy, QListWidget, QFileDialog
+    QCheckBox, QDoubleSpinBox, QSizePolicy, QListWidget, QFileDialog,
+    QInputDialog, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QColor, QFont, QKeySequence, QPalette, QIcon, QPainter, QPixmap
@@ -57,6 +58,7 @@ DEFAULT_SHORTCUTS = {
     "tab_settings":  "Ctrl+Shift+P",
     "close":         "Ctrl+Q",
 }
+CUSTOM_COLOR_PRESET_NAME = "Personnalisé"
 
 SHORTCUT_LABELS = {
     "play_pause":    "Lecture / Pause",
@@ -103,6 +105,52 @@ DEFAULT_COLORS = {
     "border_bright":  "#3d3420",
     "highlight_bg":   "#2a2008",
     "btn_bg":         "#1e1a12",
+}
+
+DEFAULT_COLOR_PRESETS = {
+    "Défaut": dict(DEFAULT_COLORS),
+    "Bleu nuit": {
+        "bg_main": "#080c14", "bg_secondary": "#0d1520", "bg_list": "#060a10",
+        "accent": "#4da6ff", "accent_dark": "#1a6abf", "text_primary": "#c8dff0",
+        "text_secondary": "#6090b0", "text_muted": "#304860", "border": "#1a3050",
+        "border_bright": "#2a4a70", "highlight_bg": "#0a2040", "btn_bg": "#0d1520",
+    },
+    "Vert terminal": {
+        "bg_main": "#030a03", "bg_secondary": "#0a1a0a", "bg_list": "#020702",
+        "accent": "#00ff88", "accent_dark": "#008844", "text_primary": "#b0ffb0",
+        "text_secondary": "#508050", "text_muted": "#204020", "border": "#0a2010",
+        "border_bright": "#184018", "highlight_bg": "#053010", "btn_bg": "#0a1a0a",
+    },
+    "Violet": {
+        "bg_main": "#110b18", "bg_secondary": "#21132e", "bg_list": "#0b0710",
+        "accent": "#c77dff", "accent_dark": "#7b2cbf", "text_primary": "#f0dcff",
+        "text_secondary": "#b892d3", "text_muted": "#725486", "border": "#38204d",
+        "border_bright": "#5c3475", "highlight_bg": "#32134d", "btn_bg": "#21132e",
+    },
+    "Interface claire": {
+        "bg_main": "#f4f1ea", "bg_secondary": "#e4dfd4", "bg_list": "#fffdf8",
+        "accent": "#b05a00", "accent_dark": "#7a3d00", "text_primary": "#29251f",
+        "text_secondary": "#62584d", "text_muted": "#82766a", "border": "#c9c0b3",
+        "border_bright": "#a79a8a", "highlight_bg": "#f1d8b5", "btn_bg": "#e4dfd4",
+    },
+    "Rouge": {
+        "bg_main": "#180b0b", "bg_secondary": "#2b1111", "bg_list": "#100606",
+        "accent": "#ff5c5c", "accent_dark": "#b51f1f", "text_primary": "#ffe2e2",
+        "text_secondary": "#d49a9a", "text_muted": "#865252", "border": "#4c1d1d",
+        "border_bright": "#763030", "highlight_bg": "#4a1515", "btn_bg": "#2b1111",
+    },
+    "Noir": {
+        "bg_main": "#050505", "bg_secondary": "#111111", "bg_list": "#000000",
+        "accent": "#d0d0d0", "accent_dark": "#777777", "text_primary": "#f2f2f2",
+        "text_secondary": "#b0b0b0", "text_muted": "#707070", "border": "#242424",
+        "border_bright": "#3b3b3b", "highlight_bg": "#202020", "btn_bg": "#111111",
+    },
+    "Blanc et noir": {
+        "bg_main": "#ffffff", "bg_secondary": "#eeeeee", "bg_list": "#fafafa",
+        "accent": "#111111", "accent_dark": "#444444", "text_primary": "#111111",
+        "text_secondary": "#444444", "text_muted": "#777777", "border": "#cccccc",
+        "border_bright": "#999999", "highlight_bg": "#dddddd", "btn_bg": "#eeeeee",
+    },
 }
 
 COLOR_LABELS = {
@@ -372,10 +420,25 @@ class StartupTab(QWidget):
 
 class ColorsTab(QWidget):
     colors_changed = pyqtSignal(dict)
+    presets_changed = pyqtSignal(dict)
 
-    def __init__(self, colors: dict, parent=None):
+    def __init__(self, colors: dict, presets: dict = None, parent=None):
         super().__init__(parent)
-        self._colors = dict(colors)
+        self._colors = {**DEFAULT_COLORS, **colors}
+        self._presets = {
+            name: {**DEFAULT_COLORS, **values}
+            for name, values in DEFAULT_COLOR_PRESETS.items()
+        }
+        if isinstance(presets, dict):
+            for name, values in presets.items():
+                if (
+                    isinstance(name, str)
+                    and name.strip()
+                    and name.casefold() != "défaut"
+                    and isinstance(values, dict)
+                ):
+                    self._presets[name] = {**DEFAULT_COLORS, **values}
+        self._presets["Défaut"] = dict(DEFAULT_COLORS)
         self._btns: Dict[str, ColorButton] = {}
         self._setup_ui()
 
@@ -409,58 +472,32 @@ class ColorsTab(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
 
         btn_row = QHBoxLayout()
-        btn_reset = QPushButton("Couleurs par défaut (jaune-orangé)")
-        btn_reset.clicked.connect(self._reset_all)
-        btn_row.addWidget(btn_reset)
+        self.cmb_presets = QComboBox()
+        self.cmb_presets.addItems(self._presets)
+        self.cmb_presets.currentTextChanged.connect(self._update_preset_controls)
+        btn_row.addWidget(self.cmb_presets, 1)
 
-        btn_preset_dark = QPushButton("Preset : Bleu nuit")
-        btn_preset_dark.clicked.connect(self._preset_blue)
-        btn_row.addWidget(btn_preset_dark)
+        self.btn_apply_preset = QPushButton("Appliquer")
+        self.btn_apply_preset.clicked.connect(self._apply_selected_preset)
+        btn_row.addWidget(self.btn_apply_preset)
 
-        btn_preset_green = QPushButton("Preset : Vert terminal")
-        btn_preset_green.clicked.connect(self._preset_green)
-        btn_row.addWidget(btn_preset_green)
+        self.btn_save_preset = QPushButton("Enregistrer")
+        self.btn_save_preset.setToolTip("Enregistrer les couleurs dans le preset sélectionné")
+        self.btn_save_preset.clicked.connect(self._save_preset)
+        btn_row.addWidget(self.btn_save_preset)
 
-        presets = {
-            "Violet": {
-                "bg_main": "#110b18", "bg_secondary": "#21132e", "bg_list": "#0b0710",
-                "accent": "#c77dff", "accent_dark": "#7b2cbf", "text_primary": "#f0dcff",
-                "text_secondary": "#b892d3", "text_muted": "#725486", "border": "#38204d",
-                "border_bright": "#5c3475", "highlight_bg": "#32134d", "btn_bg": "#21132e",
-            },
-            "Interface claire": {
-                "bg_main": "#f4f1ea", "bg_secondary": "#e4dfd4", "bg_list": "#fffdf8",
-                "accent": "#b05a00", "accent_dark": "#7a3d00", "text_primary": "#29251f",
-                "text_secondary": "#62584d", "text_muted": "#82766a", "border": "#c9c0b3",
-                "border_bright": "#a79a8a", "highlight_bg": "#f1d8b5", "btn_bg": "#e4dfd4",
-            },
-            "Rouge": {
-                "bg_main": "#180b0b", "bg_secondary": "#2b1111", "bg_list": "#100606",
-                "accent": "#ff5c5c", "accent_dark": "#b51f1f", "text_primary": "#ffe2e2",
-                "text_secondary": "#d49a9a", "text_muted": "#865252", "border": "#4c1d1d",
-                "border_bright": "#763030", "highlight_bg": "#4a1515", "btn_bg": "#2b1111",
-            },
-            "Noir": {
-                "bg_main": "#050505", "bg_secondary": "#111111", "bg_list": "#000000",
-                "accent": "#d0d0d0", "accent_dark": "#777777", "text_primary": "#f2f2f2",
-                "text_secondary": "#b0b0b0", "text_muted": "#707070", "border": "#242424",
-                "border_bright": "#3b3b3b", "highlight_bg": "#202020", "btn_bg": "#111111",
-            },
-            "Blanc et noir": {
-                "bg_main": "#ffffff", "bg_secondary": "#eeeeee", "bg_list": "#fafafa",
-                "accent": "#111111", "accent_dark": "#444444", "text_primary": "#111111",
-                "text_secondary": "#444444", "text_muted": "#777777", "border": "#cccccc",
-                "border_bright": "#999999", "highlight_bg": "#dddddd", "btn_bg": "#eeeeee",
-            },
-        }
-        for name, preset in presets.items():
-            button = QPushButton(f"Preset : {name}")
-            button.clicked.connect(lambda _, values=preset: self._apply_preset(values))
-            btn_row.addWidget(button)
+        self.btn_save_preset_as = QPushButton("Enregistrer sous…")
+        self.btn_save_preset_as.clicked.connect(self._save_preset_as)
+        btn_row.addWidget(self.btn_save_preset_as)
 
-        btn_row.addStretch()
+        self.btn_delete_preset = QPushButton("Supprimer")
+        self.btn_delete_preset.clicked.connect(self._delete_preset)
+        btn_row.addWidget(self.btn_delete_preset)
+
         layout.addLayout(btn_row)
         layout.addWidget(scroll)
+        self._select_preset_for_colors()
+        self._update_preset_controls()
 
     def _on_color_change(self, key: str, color: str):
         self._colors[key] = color
@@ -470,37 +507,111 @@ class ColorsTab(QWidget):
         self.colors_changed.emit(self._colors)
 
     def _apply_preset(self, preset: dict):
-        self._colors.update(preset)
+        self._colors = {**DEFAULT_COLORS, **preset}
         for key, btn in self._btns.items():
             btn.set_color(self._colors.get(key, DEFAULT_COLORS[key]))
             for child in self.findChildren(QLabel, f"hex_{key}"):
                 child.setText(self._colors[key])
+        self._select_preset_for_colors()
+        self._update_preset_controls()
         self.colors_changed.emit(self._colors)
 
+    def _apply_selected_preset(self):
+        name = self.cmb_presets.currentText()
+        if name in self._presets:
+            self._apply_preset(self._presets[name])
+
     def _reset_all(self):
-        self._apply_preset(dict(DEFAULT_COLORS))
+        self.cmb_presets.setCurrentText("Défaut")
+        self._apply_selected_preset()
 
-    def _preset_blue(self):
-        self._apply_preset({
-            "bg_main": "#080c14", "bg_secondary": "#0d1520",
-            "bg_list": "#060a10", "accent": "#4da6ff", "accent_dark": "#1a6abf",
-            "text_primary": "#c8dff0", "text_secondary": "#6090b0",
-            "text_muted": "#304860", "border": "#1a3050", "border_bright": "#2a4a70",
-            "highlight_bg": "#0a2040", "btn_bg": "#0d1520",
-        })
+    def _select_preset_for_colors(self):
+        for name, values in self._presets.items():
+            if values == self._colors:
+                self.cmb_presets.setCurrentText(name)
+                return
+        if self.cmb_presets.findText(CUSTOM_COLOR_PRESET_NAME) < 0:
+            self.cmb_presets.addItem(CUSTOM_COLOR_PRESET_NAME)
+        self.cmb_presets.setCurrentText(CUSTOM_COLOR_PRESET_NAME)
 
-    def _preset_green(self):
-        self._apply_preset({
-            "bg_main": "#030a03", "bg_secondary": "#0a1a0a",
-            "bg_list": "#020702", "accent": "#00ff88", "accent_dark": "#008844",
-            "text_primary": "#b0ffb0", "text_secondary": "#508050",
-            "text_muted": "#204020", "border": "#0a2010", "border_bright": "#184018",
-            "highlight_bg": "#053010", "btn_bg": "#0a1a0a",
-        })
+    def _update_preset_controls(self, *_):
+        name = self.cmb_presets.currentText()
+        is_saved = name in self._presets
+        is_default = name == "Défaut"
+        self.btn_apply_preset.setEnabled(is_saved)
+        self.btn_save_preset.setEnabled(is_saved and not is_default)
+        self.btn_delete_preset.setEnabled(is_saved and not is_default)
+
+    def _save_preset(self):
+        name = self.cmb_presets.currentText()
+        if name == "Défaut" or name not in self._presets:
+            return
+        self._presets[name] = dict(self._colors)
+        self.presets_changed.emit(self.get_presets())
+
+    def _save_preset_as(self):
+        name, accepted = QInputDialog.getText(self, "Nouveau preset", "Nom du preset :")
+        if not accepted:
+            return
+        name = name.strip()
+        if not name or name.casefold() in (
+            "défaut",
+            CUSTOM_COLOR_PRESET_NAME.casefold(),
+        ):
+            QMessageBox.warning(self, "Nom invalide", "Ce nom de preset n'est pas autorisé.")
+            return
+
+        existing = next((saved for saved in self._presets if saved.casefold() == name.casefold()), None)
+        if existing:
+            answer = QMessageBox.question(
+                self,
+                "Remplacer le preset",
+                f"Le preset « {existing} » existe déjà. Voulez-vous le remplacer ?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            name = existing
+
+        self._presets[name] = dict(self._colors)
+        self.cmb_presets.blockSignals(True)
+        self.cmb_presets.clear()
+        self.cmb_presets.addItems(self._presets)
+        self.cmb_presets.setCurrentText(name)
+        self.cmb_presets.blockSignals(False)
+        self._update_preset_controls()
+        self.presets_changed.emit(self.get_presets())
+
+    def _delete_preset(self):
+        name = self.cmb_presets.currentText()
+        if name == "Défaut" or name not in self._presets:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Supprimer le preset",
+            f"Supprimer le preset « {name} » ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        del self._presets[name]
+        self.cmb_presets.blockSignals(True)
+        self.cmb_presets.clear()
+        self.cmb_presets.addItems(self._presets)
+        self.cmb_presets.setCurrentText("Défaut")
+        self.cmb_presets.blockSignals(False)
+        self._update_preset_controls()
+        self._apply_selected_preset()
+        self.presets_changed.emit(self.get_presets())
 
     def get_colors(self) -> dict:
         return dict(self._colors)
 
+    def get_presets(self) -> dict:
+        return {name: dict(colors) for name, colors in self._presets.items()}
 
 # ── Panneau Polices ───────────────────────────────────────────────────────────
 
@@ -776,6 +887,7 @@ class SettingsPanel(QWidget):
     progress_style_changed = pyqtSignal(str)
     shortcuts_changed = pyqtSignal(dict)
     colors_changed    = pyqtSignal(dict)
+    color_presets_changed = pyqtSignal(dict)
     font_changed      = pyqtSignal(dict)
     folders_changed   = pyqtSignal(list)
     language_changed  = pyqtSignal(str)
@@ -785,7 +897,7 @@ class SettingsPanel(QWidget):
                  font_cfg: dict = None, output_devices: list = None,
                  output_device=None, progress_style="classic",
                  library_folders: list = None, language: str = "fr",
-                 startup_config: dict = None, parent=None):
+                 startup_config: dict = None, parent=None, color_presets: dict = None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
@@ -793,10 +905,11 @@ class SettingsPanel(QWidget):
 
         self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device,
                     progress_style, library_folders or [], language,
-                    startup_config or {})
+                    startup_config or {}, color_presets or {})
 
     def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device,
-                progress_style, library_folders, language, startup_config):
+                progress_style, library_folders, language, startup_config,
+                color_presets):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -816,8 +929,9 @@ class SettingsPanel(QWidget):
         self.startup_tab.startup_changed.connect(self.startup_changed)
         tabs.addTab(self.startup_tab, "Démarrage")
 
-        self.colors_tab = ColorsTab(colors)
+        self.colors_tab = ColorsTab(colors, color_presets)
         self.colors_tab.colors_changed.connect(self.colors_changed)
+        self.colors_tab.presets_changed.connect(self.color_presets_changed)
         tabs.addTab(self.colors_tab, tr_tab("settings.tab.colors"))
 
         self.fonts_tab = FontsTab(font_cfg)
@@ -885,6 +999,8 @@ class SettingsPanel(QWidget):
     def get_colors(self) -> dict:
         return self.colors_tab.get_colors()
 
+    def get_color_presets(self) -> dict:
+        return self.colors_tab.get_presets()
     def get_font_config(self) -> dict:
         return self.fonts_tab.get_font_config()
 

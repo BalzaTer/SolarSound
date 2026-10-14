@@ -20,12 +20,14 @@ try:
     from ..audio.cd import CdAudio, make_cd_uri
     from ..audio.cd_metadata import fetch_release_by_toc, fetch_cover_art, cache_cover_for_drive
     from ..core.custom_playlist import MoodEnum
+    from .playlist_dialogs import mood_icon
 except (ImportError, ModuleNotFoundError):
     from core.playlist import Playlist, Track, PlayMode
     from audio.metadata import read_metadata, format_duration
     from audio.cd import CdAudio, make_cd_uri
     from audio.cd_metadata import fetch_release_by_toc, fetch_cover_art, cache_cover_for_drive
     from core.custom_playlist import MoodEnum
+    from ui.playlist_dialogs import mood_icon
 
 
 class CdMetadataWorker(QThread):
@@ -325,18 +327,11 @@ class PlaylistWidget(QWidget):
         mood_bar = QHBoxLayout()
         mood_bar.setSpacing(4)
 
-        mood_icons = {
-            MoodEnum.TRISTE.value: "😢",
-            MoodEnum.MOTIVATION.value: "💪",
-            MoodEnum.FOCUS.value: "🎯",
-            MoodEnum.CHILL.value: "😌",
-            MoodEnum.SOIREE.value: "🎉",
-            MoodEnum.FLOW.value: "🌊",
-        }
         self.mood_buttons = {}
         for mood in MoodEnum.get_all_moods():
-            icon = mood_icons.get(mood, "")
-            btn = QPushButton(f"{icon} {mood}")
+            btn = QPushButton(f" {mood}")
+            btn.setIcon(mood_icon(mood))
+            btn.setIconSize(QSize(20, 20))
             btn.setToolTip(f"Générer un mix \"{mood}\" à partir de vos playlists persos")
             btn.clicked.connect(lambda _checked, m=mood: self.mood_selected.emit(m))
             mood_bar.addWidget(btn)
@@ -793,6 +788,8 @@ class PlaylistWidget(QWidget):
     def set_theme_colors(self, colors: dict):
         self._theme_colors = dict(colors)
         accent = colors.get("accent", "#f5a623")
+        for mood, button in self.mood_buttons.items():
+            button.setIcon(mood_icon(mood, accent))
         for button, icon_name in (
             (self.btn_add, "ajout.svg"),
             (self.btn_add_folder, "dossier.svg"),

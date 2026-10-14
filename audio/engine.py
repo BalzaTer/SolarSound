@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional, Callable
 import time
 import wave as _wave_mod
+from scipy.signal import sosfilt
 
 
 @dataclass
@@ -175,12 +176,40 @@ def decode_audio_file(filepath: str):
 def _decode_soundfile(filepath: str):
     """Decode via soundfile : WAV, MP3, FLAC, OGG, AIFF..."""
     data, sr = sf.read(filepath, dtype='float32', always_2d=True)
+    return _float_audio_to_int16_stereo(data), sr
+
+
+def decode_audio_excerpt(filepath: str, excerpt_seconds: float):
+    """Decode a centered excerpt without decoding the whole file when possible."""
+    if SOUNDFILE_OK:
+        try:
+            with sf.SoundFile(filepath) as source:
+                sample_rate = source.samplerate
+                total_frames = len(source)
+                excerpt_frames = max(1, int(excerpt_seconds * sample_rate))
+                start = max(0, total_frames // 2 - excerpt_frames // 2)
+                source.seek(start)
+                data = source.read(
+                    frames=min(excerpt_frames, total_frames - start),
+                    dtype="float32",
+                    always_2d=True,
+                )
+            return _float_audio_to_int16_stereo(data), sample_rate
+        except Exception:
+            pass
+
+    data, sample_rate = decode_audio_file(filepath)
+    excerpt_frames = max(1, int(excerpt_seconds * sample_rate))
+    start = max(0, len(data) // 2 - excerpt_frames // 2)
+    return data[start:start + excerpt_frames], sample_rate
+
+
+def _float_audio_to_int16_stereo(data: np.ndarray) -> np.ndarray:
     if data.shape[1] == 1:
         data = np.column_stack([data[:, 0], data[:, 0]])
     elif data.shape[1] > 2:
         data = data[:, :2]
-    data_int16 = (data * 32767).clip(-32768, 32767).astype(np.int16)
-    return data_int16, sr
+    return (data * 32767).clip(-32768, 32767).astype(np.int16)
 
 
 def _decode_wav_stdlib(filepath: str):
@@ -236,7 +265,7 @@ class AudioEngine:
         self.config = SpatialConfig()
         self.output_device: Optional[int] = None
         self.equalizer_config = EqualizerConfig()
-        self._eq_states = []
+        self._eq_zi = None
         self._eq_sample_rate = 0
 
         self._audio_data: Optional[np.ndarray] = None
@@ -556,33 +585,34 @@ class AudioEngine:
             return stereo_chunk
         frequencies = cfg.free_frequencies if getattr(cfg, "mode", "bands") == "free" else cfg.frequencies
         gains = cfg.free_gains if getattr(cfg, "mode", "bands") == "free" else cfg.gains
-        if self._eq_sample_rate != self._sample_rate or len(self._eq_states) != len(frequencies):
+        bands = list(zip(frequencies, gains))
+        if not bands:
+            return stereo_chunk
+        if (
+            self._eq_sample_rate != self._sample_rate
+            or self._eq_zi is None
+            or self._eq_zi.shape[0] != len(bands)
+        ):
             self._eq_sample_rate = self._sample_rate
-            self._eq_states = [np.zeros((2, 4), dtype=np.float64) for _ in frequencies]
-        output = stereo_chunk.astype(np.float64, copy=True)
-        for index, (frequency, gain) in enumerate(zip(frequencies, gains)):
-            if abs(gain) < 0.01:
-                continue
+            self._eq_zi = np.zeros((len(bands), 2, 2), dtype=np.float64)
+
+        rows = []
+        for frequency, gain in bands:
             frequency = max(20.0, min(self._sample_rate * 0.45, float(frequency)))
             amplitude = 10.0 ** (float(gain) / 40.0)
             omega = 2.0 * np.pi * frequency / self._sample_rate
-            alpha = np.sin(omega) / (2.0 * 1.0)
-            b0 = 1.0 + alpha * amplitude
-            b1 = -2.0 * np.cos(omega)
-            b2 = 1.0 - alpha * amplitude
-            a0 = 1.0 + alpha / amplitude
-            a1 = -2.0 * np.cos(omega)
-            a2 = 1.0 - alpha / amplitude
-            b0, b1, b2, a1, a2 = b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0
-            state = self._eq_states[index]
-            for channel in range(2):
-                x1, x2, y1, y2 = state[channel]
-                for sample in range(len(output)):
-                    x0 = output[sample, channel]
-                    y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-                    output[sample, channel] = y0
-                    x2, x1, y2, y1 = x1, x0, y1, y0
-                state[channel] = (x1, x2, y1, y2)
+            alpha = np.sin(omega) / 2.0
+            b0, b1, b2 = 1 + alpha * amplitude, -2 * np.cos(omega), 1 - alpha * amplitude
+            a0, a1, a2 = 1 + alpha / amplitude, -2 * np.cos(omega), 1 - alpha / amplitude
+            rows.append([b0 / a0, b1 / a0, b2 / a0, 1.0, a1 / a0, a2 / a0])
+
+        sos = np.asarray(rows, dtype=np.float64)
+        output, self._eq_zi = sosfilt(
+            sos,
+            stereo_chunk.astype(np.float64, copy=False),
+            axis=0,
+            zi=self._eq_zi,
+        )
         return np.clip(output, -1.0, 1.0).astype(np.float32)
 
     # ── Stream sounddevice ────────────────────────────────────────────
@@ -604,6 +634,7 @@ class AudioEngine:
                 dtype="float32",
                 blocksize=CHUNK,
                 device=dev_id,
+                latency="high",
                 callback=self._audio_callback,
                 finished_callback=self._stream_finished,
             )

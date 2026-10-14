@@ -689,7 +689,7 @@
       "folder_id": "aedd2a40-2f73-4a31-bf85-39d052efdb86",
       "order": 0,
       "created_at": "2026-08-31T12:31:59.107834",
-      "modified_at": "2026-09-01T22:17:49.399894"
+      "modified_at": "2026-10-14T22:00:58.407329"
     },
     {
       "id": "b388b293-71ad-49b2-a211-81b3b5dab49f",
@@ -13484,7 +13484,7 @@
       "id": "aedd2a40-2f73-4a31-bf85-39d052efdb86",
       "name": "Pop-Rock",
       "order": 0,
-      "expanded": true,
+      "expanded": false,
       "created_at": "2026-09-01T12:05:50.910716"
     },
     {

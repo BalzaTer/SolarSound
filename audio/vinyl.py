@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import random
 import numpy as np
 import threading
+from scipy.signal import lfilter
 
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -73,6 +74,9 @@ class VinylProcessor:
         self._flutter_phase = 0.0
         self._read_index = 0.0          # index de lecture flottant (ré-échantillonnage)
         self._speed_random = 0.0        # composante brownienne courante
+        self._previous_sample = np.zeros(2, dtype=np.float32)
+        self._motor_rng = np.random.default_rng()
+        self._noise_rng = np.random.default_rng()
 
         # ── Buffer de délai pour le ré-échantillonnage ─────────────────
         # On garde 2 samples précédents pour l'interpolation linéaire
@@ -94,12 +98,14 @@ class VinylProcessor:
             self._sr = sr
             self._read_index = 0.0
             self._delay_buf[:] = 0
+            self._previous_sample[:] = 0
 
     def reset_position(self):
         """Appeler lors d'un seek ou d'un chargement."""
         with self._lock:
             self._read_index = 0.0
             self._delay_buf[:] = 0
+            self._previous_sample[:] = 0
             self._delay_pos = 0
             self._crackle_remaining = 0
             self._crackle_envelope = 0.0
@@ -130,58 +136,50 @@ class VinylProcessor:
         L'index de lecture avance de (motor_speed + wow + flutter + random) par frame.
         """
         n = len(chunk)
+        if not n:
+            return chunk
         out = np.zeros_like(chunk)
-
-        # Pas temporel pour une frame
-        dt = 1.0 / sr
-
-        # On garde une copie du chunk dans un buffer circulaire court
-        # pour l'interpolation (lecture légèrement en avance ou en retard)
         wp = self._wow_phase
         fp = self._flutter_phase
-        sr_rnd = self._speed_random
-        ri = self._read_index
+        times = np.arange(n, dtype=np.float64) / sr
+        wow = cfg.wow_amount * np.sin(2.0 * np.pi * cfg.wow_rate * (wp + times))
+        flutter = cfg.flutter_amount * np.sin(
+            2.0 * np.pi * cfg.flutter_rate * (fp + times)
+        )
 
-        for i in range(n):
-            # ── Calcul de la vitesse instantanée ────────────────────
-            wow_mod     = cfg.wow_amount    * np.sin(2.0 * np.pi * cfg.wow_rate * wp)
-            flutter_mod = cfg.flutter_amount * np.sin(2.0 * np.pi * cfg.flutter_rate * fp)
+        increments = (
+            self._motor_rng.random(n, dtype=np.float64) - 0.5
+        ) * cfg.motor_random * 2.0
+        random_walk, _ = lfilter(
+            [0.995],
+            [1.0, -0.995],
+            increments,
+            zi=[self._speed_random * 0.995],
+        )
+        random_walk = np.clip(random_walk, -0.05, 0.05)
+        self._speed_random = float(random_walk[-1])
 
-            # Marche brownienne pour l'aléatoire moteur
-            sr_rnd += (self._rng.random() - 0.5) * cfg.motor_random * 2.0
-            sr_rnd *= 0.995  # retour vers 0 progressif
-            sr_rnd = float(np.clip(sr_rnd, -0.05, 0.05))
-
-            speed = cfg.motor_speed + wow_mod + flutter_mod + sr_rnd
-            speed = max(0.1, speed)  # jamais négatif
-
-            # ── Interpolation linéaire sur le chunk ──────────────────
-            idx_floor = int(ri)
-            frac = ri - idx_floor
-
-            if 0 <= idx_floor < n - 1:
-                s0 = chunk[idx_floor]
-                s1 = chunk[idx_floor + 1]
-                out[i] = s0 + frac * (s1 - s0)
-            elif 0 <= idx_floor < n:
-                out[i] = chunk[idx_floor]
-            else:
-                # Hors plage : silence (arrive rarement avec speed >> 1)
-                out[i] = 0.0
-
-            ri += speed
-            wp += dt
-            fp += dt
+        speeds = np.maximum(0.1, cfg.motor_speed + wow + flutter + random_walk)
+        positions = self._read_index + np.concatenate(
+            (np.zeros(1, dtype=np.float64), np.cumsum(speeds[:-1]))
+        )
+        interpolation_positions = np.arange(-1, n + 1, dtype=np.float64)
+        interpolation_samples = np.vstack(
+            (self._previous_sample, chunk, chunk[-1])
+        )
+        for channel in range(chunk.shape[1]):
+            out[:, channel] = np.interp(
+                positions,
+                interpolation_positions,
+                interpolation_samples[:, channel],
+            )
 
         # Wrap phases
-        self._wow_phase     = wp % (1.0 / max(cfg.wow_rate, 0.01))
-        self._flutter_phase = fp % (1.0 / max(cfg.flutter_rate, 0.01))
-        self._speed_random  = sr_rnd
-
-        # L'index de lecture repart à 0 pour le prochain bloc
-        # (on lit toujours les n samples du bloc courant)
-        # On retient le surplus fractionnaire pour la continuité inter-blocs
-        self._read_index = ri - int(ri)  # fraction résiduelle
+        elapsed = n / sr
+        self._wow_phase = (wp + elapsed) % (1.0 / max(cfg.wow_rate, 0.01))
+        self._flutter_phase = (fp + elapsed) % (1.0 / max(cfg.flutter_rate, 0.01))
+        self._read_index += float(np.sum(speeds)) - n
+        self._previous_sample = chunk[-1].copy()
 
         return out
 
@@ -193,11 +191,8 @@ class VinylProcessor:
 
         # Bruit de fond (hiss) : bruit blanc filtré passe-bas à ~8 kHz
         if cfg.hiss_level > 0:
-            hiss = np.fromiter(
-                (self._rng.gauss(0.0, 1.0) for _ in range(n)),
-                dtype=np.float32,
-                count=n,
-            ) * cfg.hiss_level
+            hiss = self._noise_rng.standard_normal(n).astype(np.float32)
+            hiss *= cfg.hiss_level
             # Filtrage simple : moyenne mobile 3 points (adoucit le bruit)
             hiss[1:-1] = (hiss[:-2] + hiss[1:-1] + hiss[2:]) / 3.0
             out[:, 0] += hiss
@@ -208,13 +203,17 @@ class VinylProcessor:
             i = 0
             while i < n:
                 if self._crackle_remaining > 0:
-                    # Appliquer l'enveloppe du clic courant
-                    amp = self._crackle_envelope * self._crackle_sign
-                    out[i, 0] += amp
-                    out[i, 1] += amp * float(self._rng.random() * 0.4 + 0.8)  # L/R légèrement différents
-                    self._crackle_envelope *= self._crackle_decay
-                    self._crackle_remaining -= 1
-                    i += 1
+                    count = min(self._crackle_remaining, n - i)
+                    envelope = self._crackle_envelope * np.power(
+                        self._crackle_decay, np.arange(count)
+                    )
+                    click = envelope * self._crackle_sign
+                    right_gain = self._noise_rng.random(count) * 0.4 + 0.8
+                    out[i:i + count, 0] += click
+                    out[i:i + count, 1] += click * right_gain
+                    self._crackle_envelope *= self._crackle_decay ** count
+                    self._crackle_remaining -= count
+                    i += count
                 elif self._crackle_countdown <= 0:
                     # Déclencher un nouveau clic
                     dur_frames = max(1, int(cfg.crackle_duration_ms * sr / 1000.0))
@@ -227,8 +226,9 @@ class VinylProcessor:
                     self._crackle_sign = 1.0 if self._rng.random() > 0.5 else -1.0
                     self._next_crackle_countdown()
                 else:
-                    self._crackle_countdown -= 1
-                    i += 1
+                    skipped = min(self._crackle_countdown, n - i)
+                    self._crackle_countdown -= skipped
+                    i += skipped
 
         return np.clip(out, -1.0, 1.0)
 

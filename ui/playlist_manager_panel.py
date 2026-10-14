@@ -4,22 +4,22 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QTreeWidget, QTreeWidgetItem, QPushButton, QLabel, QFileDialog,
     QMessageBox, QFrame, QSizePolicy, QAbstractItemView, QInputDialog,
-    QSplitter, QMenu, QStackedWidget, QButtonGroup, QStyle
+    QSplitter, QMenu, QStackedWidget, QButtonGroup
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QEvent, QObject, QRunnable, QThreadPool
-from PyQt6.QtGui import QPixmap, QIcon, QAction, QKeySequence, QPainter, QCursor
+from PyQt6.QtGui import QColor, QPixmap, QIcon, QAction, QKeySequence, QPainter, QCursor
 from PyQt6.QtSvg import QSvgRenderer
 import os
 from datetime import datetime
 
 try:
-    from .playlist_dialogs import PlaylistDialog, PlaylistActionDialog, MOOD_ICONS
+    from .playlist_dialogs import PlaylistDialog, PlaylistActionDialog, mood_icon
     from .progress_dialog import run_with_progress
     from ..core.playlist_manager import PlaylistManager
     from ..audio.metadata import format_duration, read_cover_art_data
     from ..core.i18n import tr
 except (ImportError, ModuleNotFoundError):
-    from ui.playlist_dialogs import PlaylistDialog, PlaylistActionDialog, MOOD_ICONS
+    from ui.playlist_dialogs import PlaylistDialog, PlaylistActionDialog, mood_icon
     from ui.progress_dialog import run_with_progress
     from core.playlist_manager import PlaylistManager
     from audio.metadata import format_duration, read_cover_art_data
@@ -27,6 +27,27 @@ except (ImportError, ModuleNotFoundError):
 
 
 ROLE = Qt.ItemDataRole.UserRole
+
+
+def _tinted_icon(name, color):
+    icon_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "icons",
+        name,
+    )
+    if not os.path.isfile(icon_path):
+        return QIcon()
+    renderer = QSvgRenderer(icon_path)
+    if not renderer.isValid():
+        return QIcon(icon_path)
+    pixmap = QPixmap(64, 64)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(pixmap.rect(), QColor(color))
+    painter.end()
+    return QIcon(pixmap)
 
 
 class _CoverArtLoadSignals(QObject):
@@ -162,7 +183,9 @@ class PlaylistBrowserView(QWidget):
         self._get_cover_icon = get_cover_icon
         self._folder_id = None
         self._drag_cursor_active = False
+        self._theme_colors = {"accent": "#f5a623"}
         self._build_ui()
+        self.set_theme_colors(self._theme_colors)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -170,21 +193,31 @@ class PlaylistBrowserView(QWidget):
         layout.setSpacing(4)
 
         path_row = QHBoxLayout()
-        self.btn_up = QPushButton("⬆")
-        self.btn_up.setFixedWidth(28)
+        self.btn_up = QPushButton()
+        self.btn_up.setIconSize(QSize(18, 18))
         self.btn_up.setToolTip(tr("playlists.up_tooltip"))
         self.btn_up.setEnabled(False)
         self.btn_up.clicked.connect(lambda: self.navigate_to(None))
         path_row.addWidget(self.btn_up)
 
-        self.lbl_path = QLabel(tr("playlists.root"))
-        self.lbl_path.setStyleSheet("font-weight: bold;")
+        self.lbl_path = QLabel()
+        self.lbl_path.setFixedSize(18, 18)
         path_row.addWidget(self.lbl_path)
+        self.lbl_path_separator = QLabel("›")
+        self.lbl_path_separator.hide()
+        path_row.addWidget(self.lbl_path_separator)
+        self.lbl_path_folder_icon = QLabel()
+        self.lbl_path_folder_icon.setFixedSize(16, 16)
+        self.lbl_path_folder_icon.hide()
+        path_row.addWidget(self.lbl_path_folder_icon)
+        self.lbl_path_folder_name = QLabel()
+        path_row.addWidget(self.lbl_path_folder_name)
         path_row.addStretch()
         layout.addLayout(path_row)
 
-        folder_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon)
-        self._folder_icon = folder_icon
+        self._folder_icon = _tinted_icon(
+            "dossier.svg", self._theme_colors.get("accent", "#f5a623")
+        )
 
         if self.mode == "details":
             self.view = QTreeWidget()
@@ -286,11 +319,18 @@ class PlaylistBrowserView(QWidget):
             self._folder_id = None  # le dossier parcouru a été supprimé entre-temps
 
         if self._folder_id is None:
-            self.lbl_path.setText(tr("playlists.root"))
+            self.lbl_path_separator.hide()
+            self.lbl_path_folder_icon.hide()
+            self.lbl_path_folder_name.clear()
             self.btn_up.setEnabled(False)
         else:
             folder = self.manager.get_folder(self._folder_id)
-            self.lbl_path.setText(f'{tr("playlists.root")} ▸ 📁 {folder.name}')
+            self.lbl_path_separator.show()
+            self.lbl_path_folder_icon.setPixmap(
+                self._folder_icon.pixmap(QSize(16, 16))
+            )
+            self.lbl_path_folder_icon.show()
+            self.lbl_path_folder_name.setText(folder.name)
             self.btn_up.setEnabled(True)
 
         if self.mode == "details":
@@ -344,6 +384,24 @@ class PlaylistBrowserView(QWidget):
             self.view.addItem(item)
         self.view.blockSignals(False)
 
+    def set_theme_colors(self, colors):
+        self._theme_colors = dict(colors)
+        accent = colors.get("accent", "#f5a623")
+        self._folder_icon = _tinted_icon("dossier.svg", accent)
+        root_icon = _tinted_icon("racine.svg", accent)
+        self.btn_up.setIcon(root_icon)
+        self.lbl_path.setPixmap(root_icon.pixmap(QSize(18, 18)))
+        self.lbl_path_folder_icon.setPixmap(self._folder_icon.pixmap(QSize(16, 16)))
+        count = self.view.topLevelItemCount() if self.mode == "details" else self.view.count()
+        for index in range(count):
+            item = self.view.topLevelItem(index) if self.mode == "details" else self.view.item(index)
+            data = self._item_data(item) or {}
+            if data.get("type") == "folder":
+                if self.mode == "details":
+                    item.setIcon(0, self._folder_icon)
+                else:
+                    item.setIcon(self._folder_icon)
+
     # ── Sélection / activation ───────────────────────────────────────
     def _item_data(self, item):
         if item is None:
@@ -388,6 +446,7 @@ class PlaylistManagerPanel(QWidget):
     def __init__(self, manager: PlaylistManager, get_library_folders=None, parent=None):
         super().__init__(parent)
         self.manager = manager
+        self._theme_colors = {"accent": "#f5a623"}
         self._get_library_folders = get_library_folders or (lambda: [])
         self._current_playlist_id = None
         self._current_folder_id = None  # dossier sélectionné (item "dossier")
@@ -402,6 +461,7 @@ class PlaylistManagerPanel(QWidget):
         self._default_cover_icon = QIcon(self._default_cover_pixmap(QSize(80, 80)))
         self._setup_ui()
         self._connect_signals()
+        self.set_theme_colors(self._theme_colors)
         self.refresh_playlists()
 
     # ── UI ──────────────────────────────────────────────────────────
@@ -430,9 +490,9 @@ class PlaylistManagerPanel(QWidget):
 
         # ── Sélecteur de mode d'affichage (Arbre / Détails / Icônes) ─
         view_mode_row = QHBoxLayout()
-        self.btn_view_tree = QPushButton(tr("playlists.view.tree"))
-        self.btn_view_details = QPushButton(tr("playlists.view.details"))
-        self.btn_view_icons = QPushButton(tr("playlists.view.icons"))
+        self.btn_view_tree = QPushButton(" " + tr("playlists.view.tree"))
+        self.btn_view_details = QPushButton(" " + tr("playlists.view.details"))
+        self.btn_view_icons = QPushButton(" " + tr("playlists.view.icons"))
         for btn in (self.btn_view_tree, self.btn_view_details, self.btn_view_icons):
             btn.setCheckable(True)
             view_mode_row.addWidget(btn)
@@ -467,22 +527,22 @@ class PlaylistManagerPanel(QWidget):
         left_col.addWidget(self.stack_views)
 
         left_buttons_row = QHBoxLayout()
-        self.btn_new = QPushButton("＋ Nouvelle")
+        self.btn_new = QPushButton(" Nouvelle")
         self.btn_new.setToolTip("Nouvelle playlist (Ctrl+N)")
-        self.btn_new_folder = QPushButton("📁 Nouveau dossier")
+        self.btn_new_folder = QPushButton(" Nouveau dossier")
         self.btn_new_folder.setToolTip("Nouveau dossier (Ctrl+Maj+N)")
         left_buttons_row.addWidget(self.btn_new)
         left_buttons_row.addWidget(self.btn_new_folder)
         left_col.addLayout(left_buttons_row)
 
         library_buttons_row = QHBoxLayout()
-        self.btn_backup_all = QPushButton("💾 Sauvegarder toutes les playlists")
+        self.btn_backup_all = QPushButton(" Sauvegarder toutes les playlists")
         self.btn_backup_all.setToolTip("Enregistrer une copie du fichier JSON de toutes les playlists")
         library_buttons_row.addWidget(self.btn_backup_all)
         left_col.addLayout(library_buttons_row)
 
         scan_buttons_row = QHBoxLayout()
-        self.btn_scan_library = QPushButton("🔍 Scanner les dossiers de musique")
+        self.btn_scan_library = QPushButton(" Scanner les dossiers de musique")
         self.btn_scan_library.setToolTip(
             "Retrouver les pistes déplacées/renommées dans les dossiers de "
             "musique configurés (Paramètres → Bibliothèque)"
@@ -510,10 +570,13 @@ class PlaylistManagerPanel(QWidget):
         info_col = QVBoxLayout()
         self.lbl_name = QLabel("—")
         self.lbl_name.setStyleSheet("font-size: 15px; font-weight: bold;")
-        self.lbl_moods = QLabel("")
+        self.moods_widget = QWidget()
+        self.moods_layout = QHBoxLayout(self.moods_widget)
+        self.moods_layout.setContentsMargins(0, 0, 0, 0)
+        self.moods_layout.setSpacing(4)
         self.lbl_track_count = QLabel("")
         info_col.addWidget(self.lbl_name)
-        info_col.addWidget(self.lbl_moods)
+        info_col.addWidget(self.moods_widget)
         info_col.addWidget(self.lbl_track_count)
         info_col.addStretch()
         header_row.addLayout(info_col)
@@ -521,10 +584,10 @@ class PlaylistManagerPanel(QWidget):
         right_col.addLayout(header_row)
 
         actions_row = QHBoxLayout()
-        self.btn_edit = QPushButton("✎ Éditer")
-        self.btn_add_files = QPushButton("＋ Fichiers")
-        self.btn_add_folder = QPushButton("📁 Dossier")
-        self.btn_load = QPushButton("▶ Charger")
+        self.btn_edit = QPushButton(" Éditer")
+        self.btn_add_files = QPushButton(" Fichiers")
+        self.btn_add_folder = QPushButton(" Dossier")
+        self.btn_load = QPushButton(" Charger")
         actions_row.addWidget(self.btn_edit)
         actions_row.addWidget(self.btn_add_files)
         actions_row.addWidget(self.btn_add_folder)
@@ -535,7 +598,7 @@ class PlaylistManagerPanel(QWidget):
         tracks_toolbar = QHBoxLayout()
         tracks_toolbar.addWidget(QLabel("Pistes (glisser pour réordonner) :"))
         tracks_toolbar.addStretch()
-        self.btn_remove_track = QPushButton("✕ Retirer la piste")
+        self.btn_remove_track = QPushButton(" Retirer la piste")
         self.btn_remove_track.setToolTip("Retirer la piste sélectionnée de la playlist")
         tracks_toolbar.addWidget(self.btn_remove_track)
         right_col.addLayout(tracks_toolbar)
@@ -560,11 +623,11 @@ class PlaylistManagerPanel(QWidget):
         visible ; les 5 autres ne sont accessibles qu'au clic droit ou au
         raccourci.
         """
-        self.act_new = QAction("＋ Nouvelle playlist", self)
+        self.act_new = QAction(" Nouvelle playlist", self)
         self.act_new.setShortcut(QKeySequence("Ctrl+N"))
         self.act_new.triggered.connect(self._on_new)
 
-        self.act_new_folder = QAction("📁 Nouveau dossier", self)
+        self.act_new_folder = QAction(" Nouveau dossier", self)
         self.act_new_folder.setShortcut(QKeySequence("Ctrl+Shift+N"))
         self.act_new_folder.triggered.connect(self._on_new_folder)
 
@@ -584,13 +647,13 @@ class PlaylistManagerPanel(QWidget):
         self.act_move_down.setShortcut(QKeySequence("Ctrl+Down"))
         self.act_move_down.triggered.connect(lambda: self._on_move_step("down"))
 
-        self.act_move_to_folder = QAction("→ 📁 Déplacer vers un dossier…", self)
+        self.act_move_to_folder = QAction(" Déplacer vers un dossier…", self)
         self.act_move_to_folder.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self.act_move_to_folder.triggered.connect(self._on_move_to_folder)
 
-        self.act_load_folder = QAction("▶ Lire les playlists du dossier", self)
+        self.act_load_folder = QAction(" Lire les playlists du dossier", self)
         self.act_load_folder_recursive = QAction(
-            "▶ Lire le dossier et ses sous-dossiers", self
+            " Lire le dossier et ses sous-dossiers", self
         )
         self.act_load_folder.triggered.connect(self._on_load_folder)
         self.act_load_folder_recursive.triggered.connect(
@@ -664,6 +727,8 @@ class PlaylistManagerPanel(QWidget):
         self.btn_view_tree.clicked.connect(lambda: self._on_view_mode_changed("tree"))
         self.btn_view_details.clicked.connect(lambda: self._on_view_mode_changed("details"))
         self.btn_view_icons.clicked.connect(lambda: self._on_view_mode_changed("icons"))
+        for button in (self.btn_view_tree, self.btn_view_details, self.btn_view_icons):
+            button.toggled.connect(self._refresh_view_mode_icons)
 
         self.btn_new.clicked.connect(self._on_new)
         self.btn_new_folder.clicked.connect(self._on_new_folder)
@@ -683,9 +748,9 @@ class PlaylistManagerPanel(QWidget):
 
     def retranslate_ui(self):
         """Textes de ce panneau à remettre à jour après un changement de langue."""
-        self.btn_view_tree.setText(tr("playlists.view.tree"))
-        self.btn_view_details.setText(tr("playlists.view.details"))
-        self.btn_view_icons.setText(tr("playlists.view.icons"))
+        self.btn_view_tree.setText(" " + tr("playlists.view.tree"))
+        self.btn_view_details.setText(" " + tr("playlists.view.details"))
+        self.btn_view_icons.setText(" " + tr("playlists.view.icons"))
         for view in (self.view_details, self.view_icons):
             view.retranslate()
 
@@ -769,8 +834,12 @@ class PlaylistManagerPanel(QWidget):
         restore_item = None
 
         for folder in folders:
-            folder_item = QTreeWidgetItem([f"📁 {folder.name}"])
+            folder_item = QTreeWidgetItem([folder.name])
             folder_item.setData(0, ROLE, {"type": "folder", "id": folder.id})
+            folder_item.setIcon(0, _tinted_icon(
+                "dossier.svg",
+                self._theme_colors.get("accent", "#f5a623"),
+            ))
             folder_item.setFlags(
                 folder_item.flags() | Qt.ItemFlag.ItemIsDropEnabled
             )
@@ -1036,9 +1105,14 @@ class PlaylistManagerPanel(QWidget):
 
     def _refresh_details(self, playlist):
         self.list_tracks.clear()
+        while self.moods_layout.count():
+            item = self.moods_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
         if not playlist:
             self.lbl_name.setText("—")
-            self.lbl_moods.setText("")
             self.lbl_track_count.setText("")
             self.lbl_cover.setPixmap(self._default_cover_pixmap(QSize(80, 80)))
             self.lbl_cover.setText("")
@@ -1047,8 +1121,17 @@ class PlaylistManagerPanel(QWidget):
 
         self._set_details_enabled(True)
         self.lbl_name.setText(playlist.name or "(Sans nom)")
-        moods_text = "  ".join(f"{MOOD_ICONS.get(m, '')} {m}" for m in playlist.moods)
-        self.lbl_moods.setText(moods_text or "Aucune humeur associée")
+        if playlist.moods:
+            for mood in playlist.moods:
+                icon_label = QLabel()
+                accent = self._theme_colors.get("accent", "#f5a623")
+                icon_label.setPixmap(mood_icon(mood, accent).pixmap(QSize(20, 20)))
+                icon_label.setToolTip(mood)
+                self.moods_layout.addWidget(icon_label)
+                self.moods_layout.addWidget(QLabel(mood))
+        else:
+            self.moods_layout.addWidget(QLabel("Aucune humeur associée"))
+        self.moods_layout.addStretch()
 
         total_duration = sum(t.duration or 0.0 for t in playlist.tracks)
         n = len(playlist.tracks)
@@ -1071,6 +1154,58 @@ class PlaylistManagerPanel(QWidget):
             item.setToolTip(track.path)
             item.setData(ROLE, i)
             self.list_tracks.addItem(item)
+
+    def _apply_theme_icons(self, colors: dict):
+        self._theme_colors = dict(colors)
+        accent = colors.get("accent", "#f5a623")
+        button_icons = (
+            (self.btn_new, "ajout.svg"),
+            (self.btn_new_folder, "dossier.svg"),
+            (self.btn_backup_all, "sauvegarde.svg"),
+            (self.btn_scan_library, "loupe.svg"),
+            (self.btn_edit, "editer.svg"),
+            (self.btn_add_files, "ajout.svg"),
+            (self.btn_add_folder, "dossier.svg"),
+            (self.btn_load, "play.svg"),
+            (self.btn_remove_track, "retirer.svg"),
+        )
+        for button, icon_name in button_icons:
+            button.setIcon(_tinted_icon(icon_name, accent))
+            button.setIconSize(QSize(18, 18))
+        self._refresh_view_mode_icons()
+
+        action_icons = (
+            (self.act_new, "ajout.svg"),
+            (self.act_new_folder, "dossier.svg"),
+            (self.act_move_to_folder, "dossier.svg"),
+            (self.act_load_folder, "dossier.svg"),
+            (self.act_load_folder_recursive, "dossier.svg"),
+        )
+        for action, icon_name in action_icons:
+            action.setIcon(_tinted_icon(icon_name, accent))
+
+        self.view_details.set_theme_colors(colors)
+        self.view_icons.set_theme_colors(colors)
+        folder_icon = _tinted_icon("dossier.svg", accent)
+        for index in range(self.tree_playlists.topLevelItemCount()):
+            item = self.tree_playlists.topLevelItem(index)
+            if (item.data(0, ROLE) or {}).get("type") == "folder":
+                item.setIcon(0, folder_icon)
+
+        if self._current_playlist_id:
+            self._refresh_details(self.manager.get_playlist(self._current_playlist_id))
+
+    def _refresh_view_mode_icons(self, *_):
+        accent = self._theme_colors.get("accent", "#f5a623")
+        selected_color = self._theme_colors.get("bg_main", "#0f0d0a")
+        for button, icon_name in (
+            (self.btn_view_tree, "arbre.svg"),
+            (self.btn_view_details, "detail.svg"),
+            (self.btn_view_icons, "icone.svg"),
+        ):
+            icon_color = selected_color if button.isChecked() else accent
+            button.setIcon(_tinted_icon(icon_name, icon_color))
+            button.setIconSize(QSize(18, 18))
 
     # ── Actions CRUD playlists ──────────────────────────────────────
     def _current_scope_folder_id(self):
@@ -1491,5 +1626,7 @@ class PlaylistManagerPanel(QWidget):
                     return
 
     def set_theme_colors(self, colors: dict):
-        """Réservé pour une future intégration du theming (appelé par MainWindow)"""
-        pass
+        self._theme_colors = dict(colors)
+        self._apply_theme_icons(colors)
+        if self._current_playlist_id:
+            self._refresh_details(self.manager.get_playlist(self._current_playlist_id))
