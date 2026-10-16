@@ -8,16 +8,28 @@
     "screen_name": "SONY TV",
     "maximized": true
   },
-  "playlist_tracks": [],
-  "current_index": 0,
-  "player_position": 0.0,
-  "play_mode": "RANDOM",
-  "loop_mode": "LOOP_ONE",
+  "playlist_tracks": [
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Alice Gomez - Rain Dance.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Emmanuel Séjourné & Joey Eng - Attraction.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Joey Eng - Blossom.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Joey Eng - Orange Valley Road.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Joey Eng - The Narrows.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Joey Eng - sincerely.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Joey Eng - square one.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Ju Percussion Group - 3 épilogues.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Ju Percussion Group - Le marché.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Marc Mellits - Gravity.mp3",
+    "D:/Musique/Musique Chaîne HI-FI/Classique/Percussions\\Paul Smadbeck - Rhythm Song.mp3"
+  ],
+  "current_index": 7,
+  "player_position": 4.608,
+  "play_mode": "LOOP_ALL",
+  "loop_mode": "LOOP_ALL",
   "current_tab": 0,
   "library_folders": [],
   "playlist_view_mode": "details",
   "language": "fr",
-  "volume": 55,
+  "volume": 94,
   "output_device": null,
   "progress_style": "intensity_centered",
   "spatial_config": {
@@ -34,7 +46,7 @@
     "mix_to_lfe": true,
     "lfe_low_pass_hz": 300.0,
     "lfe_gain": 0.21,
-    "master_volume": 0.001995262314968879,
+    "master_volume": 0.4365158322401658,
     "rotation_enabled": false,
     "rotation_speed": 0.1,
     "rotation_spread": 0.5,
@@ -55,10 +67,10 @@
       16000.0
     ],
     "gains": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
+      5.0,
+      6.0,
+      4.0,
+      2.0,
       0.0,
       0.0,
       0.0,
@@ -75,10 +87,10 @@
       16000.0
     ],
     "free_gains": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
+      5.0,
+      6.0,
+      4.0,
+      2.0,
       0.0,
       0.0,
       0.0,
@@ -126,7 +138,7 @@
         4.0
       ]
     },
-    "current_preset": "Plat",
+    "current_preset": "Bass boost",
     "mode": "free"
   },
   "vinyl_config": {

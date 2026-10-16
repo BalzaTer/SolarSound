@@ -23,3 +23,4 @@
 {"timestamp": "2026-09-19T16:38:17", "message": "Impossible de lire la table des pistes du CD", "file_path": "cdda:///J:/track/12", "exists": false, "name": "12", "extension": "", "size_bytes": 0, "modified_at": null, "kind": "audio"}
 {"timestamp": "2026-09-19T16:38:25", "message": "Impossible de lire la table des pistes du CD", "file_path": "cdda:///J:/track/12", "exists": false, "name": "12", "extension": "", "size_bytes": 0, "modified_at": null, "kind": "audio"}
 {"timestamp": "2026-09-19T16:38:25", "message": "Impossible de charger ou lire le fichier audio", "file_path": "cdda:///J:/track/3", "exists": false, "name": "3", "extension": "", "size_bytes": 0, "modified_at": null, "kind": "audio"}
+{"timestamp": "2026-10-16T19:18:22", "message": "Impossible de transmettre les fichiers à SolarSound : Unknown error", "file_path": "", "kind": "single_instance_error"}

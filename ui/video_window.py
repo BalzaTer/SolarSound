@@ -11,7 +11,7 @@ import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QFrame, QSizePolicy, QFileDialog, QComboBox,
-    QApplication
+    QApplication, QTabWidget
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
 from PyQt6.QtGui import QColor, QPainter, QFont, QKeyEvent, QIcon, QPixmap
@@ -269,6 +269,7 @@ class VideoWindow(QWidget):
         self._icons_dir = icons_dir
         self._detached = False
         self._fullscreen = False
+        self._fullscreen_tab_state = None
         self._controls_visible = True
 
         self.setMinimumSize(320, 240)
@@ -375,16 +376,100 @@ class VideoWindow(QWidget):
         self.controls.update_position(pos, dur)
 
     # ── Plein écran ───────────────────────────────────────────────────
+    def _find_tab_widget(self):
+        parent = self.parentWidget()
+        while parent is not None:
+            if isinstance(parent, QTabWidget) and parent.indexOf(self) >= 0:
+                return parent
+            parent = parent.parentWidget()
+        return None
+
+    def _take_tab_for_fullscreen(self, tab_widget):
+        index = tab_widget.indexOf(self)
+        if index < 0:
+            return None
+
+        placeholder = QWidget()
+        placeholder.setMinimumSize(self.minimumSize())
+        current_widget = tab_widget.currentWidget()
+        state = {
+            "tab_widget": tab_widget,
+            "placeholder": placeholder,
+            "index": index,
+            "text": tab_widget.tabText(index),
+            "icon": tab_widget.tabIcon(index),
+            "tool_tip": tab_widget.tabToolTip(index),
+            "whats_this": tab_widget.tabWhatsThis(index),
+            "enabled": tab_widget.isTabEnabled(index),
+            "visible": tab_widget.isTabVisible(index),
+        }
+
+        tab_widget.removeTab(index)
+        tab_widget.insertTab(index, placeholder, state["icon"], state["text"])
+        tab_widget.setTabToolTip(index, state["tool_tip"])
+        tab_widget.setTabWhatsThis(index, state["whats_this"])
+        tab_widget.setTabEnabled(index, state["enabled"])
+        tab_widget.setTabVisible(index, state["visible"])
+        if current_widget is self:
+            tab_widget.setCurrentWidget(placeholder)
+        elif current_widget is not None and tab_widget.indexOf(current_widget) >= 0:
+            tab_widget.setCurrentWidget(current_widget)
+        return state
+
+    def _restore_tab_after_fullscreen(self):
+        state = self._fullscreen_tab_state
+        if state is None:
+            return False
+
+        tab_widget = state["tab_widget"]
+        placeholder = state["placeholder"]
+        index = tab_widget.indexOf(placeholder)
+        if index < 0:
+            index = min(state["index"], tab_widget.count())
+        current_widget = tab_widget.currentWidget()
+
+        if tab_widget.indexOf(placeholder) >= 0:
+            tab_widget.removeTab(index)
+        tab_widget.insertTab(index, self, state["icon"], state["text"])
+        tab_widget.setTabToolTip(index, state["tool_tip"])
+        tab_widget.setTabWhatsThis(index, state["whats_this"])
+        tab_widget.setTabEnabled(index, state["enabled"])
+        tab_widget.setTabVisible(index, state["visible"])
+        if current_widget is placeholder:
+            tab_widget.setCurrentWidget(self)
+        elif current_widget is not None and tab_widget.indexOf(current_widget) >= 0:
+            tab_widget.setCurrentWidget(current_widget)
+        placeholder.deleteLater()
+        self._fullscreen_tab_state = None
+        return True
+
     def _toggle_fullscreen(self):
-        if not self._detached:
-            self.toggle_detach()
-            return
-        self._fullscreen = not self._fullscreen
         if self._fullscreen:
-            self.showFullScreen()
-            self._show_controls_temp()
-        else:
+            self._fullscreen = False
             self.showNormal()
+            if not self._detached:
+                if not self._restore_tab_after_fullscreen():
+                    self.setWindowFlags(Qt.WindowType.Widget)
+                self.show()
+            return
+
+        target_window = self if self._detached else self.window()
+        target_screen = target_window.screen()
+        if not self._detached:
+            tab_widget = self._find_tab_widget()
+            if tab_widget is not None:
+                self._fullscreen_tab_state = self._take_tab_for_fullscreen(tab_widget)
+            if self._fullscreen_tab_state is not None:
+                self.setParent(target_window, Qt.WindowType.Window)
+            else:
+                self.setWindowFlags(Qt.WindowType.Window)
+            if target_screen is not None:
+                self.setGeometry(target_screen.geometry())
+            self.show()
+
+        self._fullscreen = True
+        self.showFullScreen()
+        self._show_controls_temp()
 
     # ── Détachement ───────────────────────────────────────────────────
     def toggle_detach(self):
@@ -396,20 +481,23 @@ class VideoWindow(QWidget):
     def detach(self):
         self._detached = True
         self.setWindowTitle("SolarSound — Lecteur Vidéo")
-        self.setWindowFlags(Qt.WindowType.Window)
         self.controls.btn_detach.setToolTip("Réintégrer dans la fenêtre principale")
         self.controls.btn_detach.setText("⧈")
+        if self._fullscreen:
+            return
+        self.setWindowFlags(Qt.WindowType.Window)
         self.resize(900, 600)
         self.show()
         QTimer.singleShot(100, self.attach_renderer)
 
     def reattach(self):
         self._detached = False
-        self.setWindowFlags(Qt.WindowType.Widget)
         self.controls.btn_detach.setToolTip("Détacher la fenêtre vidéo")
         self.controls.btn_detach.setText("⧉")
         if self._fullscreen:
-            self._fullscreen = False
+            return
+        if not self._restore_tab_after_fullscreen():
+            self.setWindowFlags(Qt.WindowType.Widget)
         self.show()
 
     # ── Contrôles auto-masquage ───────────────────────────────────────
