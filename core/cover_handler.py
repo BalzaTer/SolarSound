@@ -3,8 +3,6 @@
 import os
 import shutil
 from typing import Optional
-from pathlib import Path
-import sys
 
 try:
     from PIL import Image
@@ -23,7 +21,7 @@ class CoverHandler:
         Initialise le gestionnaire de covers.
         
         Args:
-            app_data_dir: Répertoire où stocker les covers (généralement à côté de l'exe)
+            app_data_dir: Répertoire où stocker les covers de playlists
         """
         self.app_data_dir = app_data_dir
         self.covers_dir = os.path.join(app_data_dir, self.COVERS_DIRNAME)
@@ -44,16 +42,13 @@ class CoverHandler:
     @staticmethod
     def _get_app_data_dir() -> str:
         """
-        Détermine le répertoire de base pour les données app.
-        - Exe PyInstaller : répertoire de l'exe
-        - Script Python : répertoire racine (où est main.py)
+        Détermine le répertoire de base pour les données utilisateur de l'application.
         """
-        if getattr(sys, "frozen", False):
-            # Mode exe PyInstaller
-            return os.path.dirname(sys.executable)
-        else:
-            # Mode script Python
-            return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            from .app_paths import get_app_data_dir
+        except (ImportError, ModuleNotFoundError):
+            from app_paths import get_app_data_dir
+        return get_app_data_dir()
 
     def save_cover(self, image_data: bytes, cover_name: str) -> Optional[str]:
         """

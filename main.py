@@ -214,7 +214,7 @@ def main():
     instance_server.queue_paths(open_files)
 
     def start_application():
-        nonlocal window, window_ready
+        nonlocal window
         try:
             window = MainWindow()
             if startup_requested and not open_files:

@@ -2,7 +2,6 @@
 
 import json
 import os
-import sys
 import shutil
 from typing import List, Optional
 from datetime import datetime
@@ -13,12 +12,22 @@ try:
         PlaylistFolder, MoodEnum
     )
     from .cover_handler import CoverHandler
+    from .app_paths import (
+        get_app_data_dir,
+        migrate_legacy_directory,
+        migrate_legacy_file,
+    )
 except (ImportError, ModuleNotFoundError):
     from custom_playlist import (
         CustomPlaylist, CustomTrack, PlaylistLibrary,
         PlaylistFolder, MoodEnum
     )
     from cover_handler import CoverHandler
+    from app_paths import (
+        get_app_data_dir,
+        migrate_legacy_directory,
+        migrate_legacy_file,
+    )
 
 
 class PlaylistManager:
@@ -32,10 +41,12 @@ class PlaylistManager:
         Initialise le gestionnaire de playlists.
         
         Args:
-            app_data_dir: Répertoire de base (généré auto si None)
+            app_data_dir: Répertoire de base (généré automatiquement si None)
         """
         if app_data_dir is None:
             app_data_dir = self._get_app_data_dir()
+            migrate_legacy_file(self.PLAYLISTS_FILENAME, app_data_dir)
+            migrate_legacy_directory(CoverHandler.COVERS_DIRNAME, app_data_dir)
         
         self.app_data_dir = app_data_dir
         self.playlists_path = os.path.join(app_data_dir, self.PLAYLISTS_FILENAME)
@@ -44,11 +55,8 @@ class PlaylistManager:
 
     @staticmethod
     def _get_app_data_dir() -> str:
-        """Détermine le répertoire de base (exe ou racine script)"""
-        if getattr(sys, "frozen", False):
-            return os.path.dirname(sys.executable)
-        else:
-            return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        """Retourne le répertoire de données utilisateur de l'application."""
+        return get_app_data_dir()
 
     # ── Sauvegarde / Chargement ──────────────────────────────────────
 

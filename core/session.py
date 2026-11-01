@@ -1,29 +1,27 @@
 """
 Persistance de session SolarSound
 Sauvegarde et restaure l'état de l'application entre les sessions.
-Le fichier session.json est placé à côté de l'exécutable.
+La session est stockée dans le répertoire de données de l'utilisateur.
 """
 
 import json
 import os
-import sys
 from dataclasses import dataclass, asdict
 from typing import Optional
+
+try:
+    from .app_paths import get_app_data_dir, migrate_legacy_file
+except (ImportError, ModuleNotFoundError):
+    from app_paths import get_app_data_dir, migrate_legacy_file
 
 
 def _session_path() -> str:
     """
-    Retourne le chemin du fichier session.json.
-    - En mode .exe PyInstaller : à côté du .exe
-    - En mode script Python   : à côté de main.py
+    Retourne le chemin du fichier session.json dans les données utilisateur.
     """
-    if getattr(sys, "frozen", False):
-        # Exécutable PyInstaller
-        base = os.path.dirname(sys.executable)
-    else:
-        # Script Python : remonter au dossier racine (là où est main.py)
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, "solarsound_session.json")
+    app_data_dir = get_app_data_dir()
+    migrate_legacy_file("solarsound_session.json", app_data_dir)
+    return os.path.join(app_data_dir, "solarsound_session.json")
 
 
 @dataclass

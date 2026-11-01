@@ -133,5 +133,7 @@ L'installation du projet est disponible pour Windows, voir les releases du proje
 
 - L'installateur propose une case à cocher optionnelle pour associer les fichiers audio et vidéo pris en charge à SolarSound
 
+Les paramètres, playlists, pochettes et journaux sont stockés dans le profil utilisateur (`%APPDATA%\SolarSound` sous Windows), et non dans le dossier d'installation. Les fichiers JSON et le journal existants à côté de l'application sont copiés lors du premier lancement ; ils ne sont pas supprimés.
+
 ### Au démarrage, l'application vous accueillera avec un joli logo :
 <img width="425" height="296" alt="image" src="https://github.com/user-attachments/assets/14aa71e9-b30e-49b9-90d7-e7aaaf894bcd" />

@@ -3,6 +3,11 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+try:
+    from .app_paths import get_app_data_dir, migrate_legacy_file
+except (ImportError, ModuleNotFoundError):
+    from app_paths import get_app_data_dir, migrate_legacy_file
+
 
 def collect_file_characteristics(file_path: str) -> Dict[str, Any]:
     """Collecte des informations utiles sur le fichier problématique."""
@@ -31,7 +36,9 @@ def collect_file_characteristics(file_path: str) -> Dict[str, Any]:
 def append_error_log(message: str, file_path: Optional[str], log_path: Optional[str] = None, context: Optional[Dict[str, Any]] = None) -> str:
     """Ajoute une entrée JSON dans un fichier de log pour les erreurs de lecture."""
     if log_path is None:
-        log_path = os.path.join(os.getcwd(), "playback_errors.log")
+        app_data_dir = get_app_data_dir()
+        migrate_legacy_file("playback_errors.log", app_data_dir, os.getcwd())
+        log_path = os.path.join(app_data_dir, "playback_errors.log")
 
     payload = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
