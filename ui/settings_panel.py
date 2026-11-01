@@ -839,6 +839,7 @@ class LibraryTab(QWidget):
     """
 
     folders_changed = pyqtSignal(list)
+    refresh_requested = pyqtSignal()
 
     def __init__(self, folders: list = None, parent=None):
         super().__init__(parent)
@@ -866,8 +867,20 @@ class LibraryTab(QWidget):
         buttons_row = QHBoxLayout()
         self.btn_add = QPushButton("＋ Ajouter un dossier")
         self.btn_remove = QPushButton("－ Retirer")
+        self.btn_refresh = QPushButton()
+        self.btn_refresh.setFixedSize(32, 32)
+        self.btn_refresh.setIconSize(QSize(20, 20))
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "icons",
+            "rotation.svg",
+        )
+        self.btn_refresh.setIcon(QIcon(icon_path))
+        self.btn_refresh.setToolTip("Rafraîchir et réindexer les dossiers")
+        self.btn_refresh.setAccessibleName("Rafraîchir et réindexer les dossiers")
         buttons_row.addWidget(self.btn_add)
         buttons_row.addWidget(self.btn_remove)
+        buttons_row.addWidget(self.btn_refresh)
         group_layout.addLayout(buttons_row)
 
         layout.addWidget(group)
@@ -875,6 +888,7 @@ class LibraryTab(QWidget):
 
         self.btn_add.clicked.connect(self._on_add)
         self.btn_remove.clicked.connect(self._on_remove)
+        self.btn_refresh.clicked.connect(self.refresh_requested)
 
     def _on_add(self):
         folder = QFileDialog.getExistingDirectory(self, "Choisir un dossier de musique")
@@ -896,6 +910,12 @@ class LibraryTab(QWidget):
     def set_folders(self, folders: list):
         self.list_folders.clear()
         self.list_folders.addItems(folders or [])
+
+    def set_indexing(self, indexing: bool):
+        self.list_folders.setEnabled(not indexing)
+        self.btn_add.setEnabled(not indexing)
+        self.btn_remove.setEnabled(not indexing)
+        self.btn_refresh.setEnabled(not indexing)
 
 
 class LanguageTab(QWidget):
@@ -955,6 +975,7 @@ class SettingsPanel(QWidget):
     language_changed  = pyqtSignal(str)
     startup_changed   = pyqtSignal(dict)
     normalizer_changed = pyqtSignal(dict)
+    library_refresh_requested = pyqtSignal()
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
@@ -1009,6 +1030,7 @@ class SettingsPanel(QWidget):
 
         self.library_tab = LibraryTab(library_folders)
         self.library_tab.folders_changed.connect(self.folders_changed)
+        self.library_tab.refresh_requested.connect(self.library_refresh_requested)
         tabs.addTab(self.library_tab, tr_tab("settings.tab.library"))
 
         self.language_tab = LanguageTab(language)
@@ -1050,6 +1072,9 @@ class SettingsPanel(QWidget):
         )
         for index, (widget, icon_name) in enumerate(tab_icons):
             self._tabs.setTabIcon(index, self._tinted_tab_icon(icon_name, accent))
+        self.library_tab.btn_refresh.setIcon(
+            self._tinted_tab_icon("rotation.svg", accent)
+        )
 
     def retranslate_ui(self):
         """Remet à jour les textes de ce panneau après un changement de langue à chaud."""
@@ -1084,6 +1109,9 @@ class SettingsPanel(QWidget):
 
     def get_library_folders(self) -> list:
         return self.library_tab.get_folders()
+
+    def set_library_indexing(self, indexing: bool):
+        self.library_tab.set_indexing(indexing)
 
     def apply_all(self, shortcuts: dict, colors: dict, font_cfg: dict):
         """Recharge tout depuis une config sauvegardée."""

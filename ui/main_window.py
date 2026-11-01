@@ -1447,6 +1447,9 @@ class MainWindow(QMainWindow):
         )
         self.settings_panel.font_changed.connect(self._on_font_changed)
         self.settings_panel.folders_changed.connect(self._on_library_folders_changed)
+        self.settings_panel.library_refresh_requested.connect(
+            self._on_refresh_library_index
+        )
         self.settings_panel.language_changed.connect(self._on_language_changed)
         self.settings_panel.startup_tab.set_sources(
             MoodEnum.get_all_moods(),
@@ -1673,8 +1676,10 @@ class MainWindow(QMainWindow):
         """
         if not self._library_folders:
             self._library_index_cache = []
+            self.settings_panel.set_library_indexing(False)
             return
 
+        self.settings_panel.set_library_indexing(True)
         # Garder une référence sur self pour éviter que le thread ne soit
         # ramassé par le GC pendant son exécution.
         self._library_index_worker = TaskWorker(scan_library_folders, folders=self._library_folders)
@@ -1712,12 +1717,24 @@ class MainWindow(QMainWindow):
     def _on_library_index_ready(self, index: list):
         self._library_index_cache = index
         self.lbl_library_index_status.setVisible(False)
+        self.settings_panel.set_library_indexing(False)
 
     def _on_library_index_error(self, message: str):
         self._library_index_cache = []
         self.lbl_library_index_status.setStyleSheet("color: #b06a3a; font-size: 11px;")
         self.lbl_library_index_status.setText("⚠ " + tr("library.index_failed"))
+        self.lbl_library_index_status.setVisible(True)
         QTimer.singleShot(5000, lambda: self.lbl_library_index_status.setVisible(False))
+        self.settings_panel.set_library_indexing(False)
+
+    def _on_refresh_library_index(self):
+        if not self._library_folders:
+            self.status_bar.showMessage(
+                "Ajoutez d'abord un dossier dans la bibliothèque à réindexer.",
+                5000,
+            )
+            return
+        self._rebuild_library_index()
 
     def _on_language_changed(self, code: str):
         """Applique la nouvelle langue et retraduit ce qui peut l'être à chaud."""
