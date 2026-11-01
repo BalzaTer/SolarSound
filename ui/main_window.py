@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QFileDialog, QGroupBox, QApplication,
     QLineEdit, QListWidget, QListWidgetItem, QStyledItemDelegate, QProgressBar
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal, QPoint, QEvent, QRect
-from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter, QCursor
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, pyqtSignal, QPoint, QEvent, QRect, QUrl
+from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QKeySequence, QPixmap, QPainter, QCursor, QDesktopServices
 from PyQt6.QtSvg import QSvgRenderer
 
 try:
@@ -2814,18 +2814,13 @@ class MainWindow(QMainWindow):
     # Divers
     # ══════════════════════════════════════════════════════════════════
     def _show_about(self):
-        QMessageBox.about(self, "SolarSound",
-            "<h2 style='color:#f5a623'>SolarSound</h2>"
-            "<p>Lecteur de musique avec spatialisation 5.1</p>"
-            "<ul>"
-            "<li>Formats : MP3, WAV</li>"
-            "<li>Spatialisation 5.1 (FL, FR, C, LFE, SL, SR)</li>"
-            "<li>Doublement façade → surround</li>"
-            "<li>Mixage mono → caisson de basse (passe-bas)</li>"
-            "<li>Listes de lecture .playlist</li>"
-            "<li>Modes : séquentiel, boucle 1, boucle all, aléatoire</li>"
-            "</ul>"
-        )
+        project_url = QUrl("https://balzater.github.io/SolarSound-Website/")
+        if not QDesktopServices.openUrl(project_url):
+            QMessageBox.warning(
+                self,
+                "SolarSound",
+                "Impossible d'ouvrir le site du projet dans le navigateur.",
+            )
 
     def closeEvent(self, event):
         self._preview_player.shutdown()
