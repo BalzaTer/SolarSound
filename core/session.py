@@ -9,6 +9,21 @@ import os
 from dataclasses import dataclass, asdict
 from typing import Optional
 
+POSITION_SAVE_INTERVAL_SECONDS = 10
+MIN_POSITION_SAVE_INTERVAL_SECONDS = 1
+MAX_POSITION_SAVE_INTERVAL_SECONDS = 30
+
+
+def normalize_position_save_interval(value: object) -> int:
+    try:
+        interval = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return POSITION_SAVE_INTERVAL_SECONDS
+    return max(
+        MIN_POSITION_SAVE_INTERVAL_SECONDS,
+        min(MAX_POSITION_SAVE_INTERVAL_SECONDS, interval),
+    )
+
 try:
     from .app_paths import get_app_data_dir, migrate_legacy_file
 except (ImportError, ModuleNotFoundError):
@@ -70,6 +85,8 @@ class SessionState:
     startup_mode: str = "none"
     startup_value: str = ""
     normalizer_config: dict = None
+    resume_position_on_startup: bool = True
+    position_save_interval_seconds: int = POSITION_SAVE_INTERVAL_SECONDS
 
     def __post_init__(self):
         if self.window is None:
@@ -106,12 +123,27 @@ class SessionManager:
 
     def save(self, state: SessionState):
         try:
+            resume_position = bool(
+                getattr(state, "resume_position_on_startup", True)
+            )
+            position_save_interval = normalize_position_save_interval(
+                getattr(
+                    state,
+                    "position_save_interval_seconds",
+                    POSITION_SAVE_INTERVAL_SECONDS,
+                )
+            )
             data = {
                 "version": 2,
                 "window": asdict(state.window),
                 "playlist_tracks": state.playlist_tracks,
                 "current_index": state.current_index,
-                "player_position": getattr(state, "player_position", 0.0),
+                "player_position": (
+                    int(max(0.0, float(getattr(state, "player_position", 0.0)))
+                        // position_save_interval)
+                    * position_save_interval
+                ),
+                "position_save_interval_seconds": position_save_interval,
                 "play_mode": state.play_mode,
                 "loop_mode": getattr(state, "loop_mode", "OFF"),
                 "current_tab": state.current_tab,
@@ -133,7 +165,10 @@ class SessionManager:
                 "startup_enabled": getattr(state, "startup_enabled", False),
                 "startup_mode": getattr(state, "startup_mode", "none"),
                 "startup_value": getattr(state, "startup_value", ""),
+                "resume_position_on_startup": resume_position,
             }
+            if not resume_position:
+                data.pop("player_position")
             with open(self._path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception as e:
@@ -189,6 +224,15 @@ class SessionManager:
             state.startup_enabled = data.get("startup_enabled", False)
             state.startup_mode = data.get("startup_mode", "none")
             state.startup_value = data.get("startup_value", "")
+            state.resume_position_on_startup = data.get(
+                "resume_position_on_startup", True
+            )
+            state.position_save_interval_seconds = normalize_position_save_interval(
+                data.get(
+                    "position_save_interval_seconds",
+                    POSITION_SAVE_INTERVAL_SECONDS,
+                )
+            )
         except Exception as e:
             print(f"[Session] Impossible de charger : {e}")
         return state

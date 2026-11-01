@@ -32,7 +32,13 @@ try:
     from .visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from .progress_widget import ClickableProgressSlider, IntensityProgressBar
     from ..core.playlist import Playlist, PlayMode, Track
-    from ..core.session import SessionManager, SessionState, WindowState
+    from ..core.session import (
+        POSITION_SAVE_INTERVAL_SECONDS,
+        SessionManager,
+        SessionState,
+        WindowState,
+        normalize_position_save_interval,
+    )
     from ..core.playlist_manager import PlaylistManager
     from ..core.custom_playlist import CustomTrack, MoodEnum
     from ..core.startup import set_launch_at_startup
@@ -67,7 +73,13 @@ except (ImportError, ModuleNotFoundError):
     from ui.visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from ui.progress_widget import ClickableProgressSlider, IntensityProgressBar
     from core.playlist import Playlist, PlayMode, Track
-    from core.session import SessionManager, SessionState, WindowState
+    from core.session import (
+        POSITION_SAVE_INTERVAL_SECONDS,
+        SessionManager,
+        SessionState,
+        WindowState,
+        normalize_position_save_interval,
+    )
     from core.playlist_manager import PlaylistManager
     from core.custom_playlist import CustomTrack, MoodEnum
     from core.startup import set_launch_at_startup
@@ -359,11 +371,14 @@ class MainWindow(QMainWindow):
         self.playlist_manager = PlaylistManager()
         self.playlist_manager.load_all()
 
-        # Sauvegarde périodique de la position de lecture (indépendante du
-        # debounce déclenché par les changements ponctuels d'état)
+        # Écrit périodiquement la position de lecture dans le JSON de session,
+        # sans dépendre du debounce des changements ponctuels d'état.
         self._position_save_timer = QTimer(self)
-        self._position_save_timer.setInterval(10000)
-        self._position_save_timer.timeout.connect(self._schedule_save)
+        self._position_save_interval_seconds = POSITION_SAVE_INTERVAL_SECONDS
+        self._position_save_timer.setInterval(
+            self._position_save_interval_seconds * 1000
+        )
+        self._position_save_timer.timeout.connect(self._save_session)
         self._position_save_timer.start()
 
         # Dossiers de musique locaux (Paramètres → Bibliothèque) : élargissent
@@ -409,6 +424,7 @@ class MainWindow(QMainWindow):
         self._font_cfg  = dict(DEFAULT_FONT)
         self._progress_style = "classic"
         self._normalizer_config = {"enabled": False, "strength": 50}
+        self._resume_position_on_startup = True
         self._startup_config = {"enabled": False, "mode": "none", "value": ""}
         self._last_theme_colors = dict(DEFAULT_COLORS)
 
@@ -434,7 +450,24 @@ class MainWindow(QMainWindow):
             "enabled": getattr(session, "startup_enabled", False),
             "mode": getattr(session, "startup_mode", "none"),
             "value": getattr(session, "startup_value", ""),
+            "resume_position": getattr(session, "resume_position_on_startup", True),
+            "position_save_interval_seconds": normalize_position_save_interval(
+                getattr(
+                    session,
+                    "position_save_interval_seconds",
+                    POSITION_SAVE_INTERVAL_SECONDS,
+                )
+            ),
         }
+        self._position_save_interval_seconds = (
+            self._startup_config["position_save_interval_seconds"]
+        )
+        self._position_save_timer.setInterval(
+            self._position_save_interval_seconds * 1000
+        )
+        self._resume_position_on_startup = bool(
+            self._startup_config["resume_position"]
+        )
         set_language(getattr(session, "language", DEFAULT_LANGUAGE))
 
         self._build_ui()
@@ -705,7 +738,12 @@ class MainWindow(QMainWindow):
             window=win,
             playlist_tracks=tracks,
             current_index=max(0, self.playlist.current_index),
-            player_position=self.engine.position_seconds if self._media_mode == 'audio' else 0.0,
+            player_position=(
+                self.engine.position_seconds
+                if self._resume_position_on_startup
+                and self._media_mode == "audio"
+                else 0.0
+            ),
             play_mode=self.playlist.play_mode.name,
             loop_mode=self._loop_mode.name if self._loop_mode else "OFF",
             current_tab=self._tabs.currentIndex(),
@@ -721,6 +759,10 @@ class MainWindow(QMainWindow):
         state.startup_enabled = self._startup_config.get("enabled", False)
         state.startup_mode = self._startup_config.get("mode", "none")
         state.startup_value = self._startup_config.get("value", "")
+        state.resume_position_on_startup = self._resume_position_on_startup
+        state.position_save_interval_seconds = (
+            self._position_save_interval_seconds
+        )
         state.shortcuts = self._shortcuts
         state.colors    = self._colors
         state.color_presets = self.settings_panel.get_color_presets()
@@ -827,10 +869,14 @@ class MainWindow(QMainWindow):
                     self._current_track = track
                     self._current_media_path = track.path
                     if self.engine.load(track.path):
-                        pos = max(0.0, min(
-                            getattr(state, "player_position", 0.0),
-                            self.engine.duration_seconds,
-                        ))
+                        saved_position = (
+                            getattr(state, "player_position", 0.0)
+                            if self._resume_position_on_startup else 0.0
+                        )
+                        pos = max(
+                            0.0,
+                            min(saved_position, self.engine.duration_seconds),
+                        )
                         self.engine.seek(pos)
                         is_cd = parse_cd_uri(track.path) is not None
                         self._update_progress_stack_for_track(is_cd)
@@ -1439,6 +1485,12 @@ class MainWindow(QMainWindow):
         self.settings_panel.output_changed.connect(self._on_output_changed)
         self.settings_panel.normalizer_changed.connect(self._on_normalizer_changed)
         self.settings_panel.startup_changed.connect(self._on_startup_changed)
+        self.settings_panel.resume_position_changed.connect(
+            self._on_resume_position_changed
+        )
+        self.settings_panel.position_save_interval_changed.connect(
+            self._on_position_save_interval_changed
+        )
         self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
         self.settings_panel.shortcuts_changed.connect(self._on_shortcuts_changed)
         self.settings_panel.colors_changed.connect(self._on_colors_changed)
@@ -2069,6 +2121,14 @@ class MainWindow(QMainWindow):
             else:
                 track = self.playlist.current_track
             if track:
+                if (
+                    track.path == self._current_media_path
+                    and self.engine.has_loaded_audio
+                ):
+                    self.engine.play()
+                    self._set_play_icon(True)
+                    self.status_bar.showMessage(f"Lecture : {track.title}")
+                    return
                 self._load_and_play(track, self.playlist.current_index)
     def _on_stop(self):
         # Le raccourci Échap est partagé avec la fermeture de la recherche :
@@ -2561,11 +2621,26 @@ class MainWindow(QMainWindow):
             "enabled": bool(config.get("enabled", False)),
             "mode": config.get("mode", "none"),
             "value": config.get("value", ""),
+            "resume_position": self._resume_position_on_startup,
+            "position_save_interval_seconds": self._position_save_interval_seconds,
         }
         if not set_launch_at_startup(self._startup_config["enabled"]):
             self.status_bar.showMessage(
                 "Le démarrage automatique est disponible uniquement sous Windows."
             )
+        self._schedule_save()
+
+    def _on_resume_position_changed(self, resume: bool):
+        self._resume_position_on_startup = bool(resume)
+        self._schedule_save()
+
+    def _on_position_save_interval_changed(self, interval: int):
+        self._position_save_interval_seconds = normalize_position_save_interval(
+            interval
+        )
+        self._position_save_timer.start(
+            self._position_save_interval_seconds * 1000
+        )
         self._schedule_save()
 
     def start_configured_playback(self):
@@ -2862,8 +2937,8 @@ class MainWindow(QMainWindow):
             )
 
     def closeEvent(self, event):
+        self._save_session()
         self._preview_player.shutdown()
         self.engine.stop()
         self.video_engine.release()
-        self._save_session()
         event.accept()

@@ -325,6 +325,8 @@ class StartupTab(QWidget):
     """Options de lancement automatique et de lecture au démarrage Windows."""
 
     startup_changed = pyqtSignal(dict)
+    resume_position_changed = pyqtSignal(bool)
+    position_save_interval_changed = pyqtSignal(int)
 
     def __init__(self, config=None, parent=None):
         super().__init__(parent)
@@ -333,6 +335,11 @@ class StartupTab(QWidget):
             "enabled": bool(config.get("enabled", False)),
             "mode": config.get("mode", "none"),
             "value": config.get("value", ""),
+            "resume_position": bool(config.get("resume_position", True)),
+            "position_save_interval_seconds": max(
+                1,
+                min(30, int(config.get("position_save_interval_seconds", 10))),
+            ),
         }
         self._sources = {}
         self._setup_ui()
@@ -341,6 +348,34 @@ class StartupTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+
+        resume_group = QGroupBox("À la réouverture de SolarSound")
+        resume_layout = QVBoxLayout(resume_group)
+        resume_layout.addWidget(QLabel("Reprise de la musique en cours :"))
+        self.cmb_resume_position = QComboBox()
+        self.cmb_resume_position.addItem(
+            "Reprendre à la seconde où je me suis arrêté", True
+        )
+        self.cmb_resume_position.addItem("Recommencer au début du morceau", False)
+        resume_position = bool(self._config.get("resume_position", True))
+        resume_index = self.cmb_resume_position.findData(resume_position)
+        self.cmb_resume_position.setCurrentIndex(max(0, resume_index))
+        self.cmb_resume_position.currentIndexChanged.connect(
+            self._on_resume_position_changed
+        )
+        resume_layout.addWidget(self.cmb_resume_position)
+        resume_layout.addWidget(QLabel("Enregistrer la position toutes les :"))
+        self.spn_position_save_interval = QSpinBox()
+        self.spn_position_save_interval.setRange(1, 30)
+        self.spn_position_save_interval.setSuffix(" s")
+        self.spn_position_save_interval.setValue(
+            self._config["position_save_interval_seconds"]
+        )
+        self.spn_position_save_interval.valueChanged.connect(
+            self._on_position_save_interval_changed
+        )
+        resume_layout.addWidget(self.spn_position_save_interval)
+        layout.addWidget(resume_group)
 
         self.chk_enabled = QCheckBox("Lancer SolarSound au démarrage de Windows")
         self.chk_enabled.setChecked(self._config["enabled"])
@@ -412,8 +447,23 @@ class StartupTab(QWidget):
             "enabled": self.chk_enabled.isChecked(),
             "mode": mode,
             "value": value or "",
+            "resume_position": bool(
+                self.cmb_resume_position.currentData()
+            ),
+            "position_save_interval_seconds": (
+                self.spn_position_save_interval.value()
+            ),
         }
         self.startup_changed.emit(dict(self._config))
+
+    def _on_resume_position_changed(self, index: int):
+        self.resume_position_changed.emit(
+            bool(self.cmb_resume_position.itemData(index))
+        )
+
+    def _on_position_save_interval_changed(self, interval: int):
+        self._config["position_save_interval_seconds"] = interval
+        self.position_save_interval_changed.emit(interval)
 
 
 # ── Panneau Couleurs ─────────────────────────────────────────────────────────
@@ -974,6 +1024,8 @@ class SettingsPanel(QWidget):
     folders_changed   = pyqtSignal(list)
     language_changed  = pyqtSignal(str)
     startup_changed   = pyqtSignal(dict)
+    resume_position_changed = pyqtSignal(bool)
+    position_save_interval_changed = pyqtSignal(int)
     normalizer_changed = pyqtSignal(dict)
     library_refresh_requested = pyqtSignal()
 
@@ -1017,6 +1069,12 @@ class SettingsPanel(QWidget):
 
         self.startup_tab = StartupTab(startup_config)
         self.startup_tab.startup_changed.connect(self.startup_changed)
+        self.startup_tab.resume_position_changed.connect(
+            self.resume_position_changed
+        )
+        self.startup_tab.position_save_interval_changed.connect(
+            self.position_save_interval_changed
+        )
         tabs.addTab(self.startup_tab, "Démarrage")
 
         self.colors_tab = ColorsTab(colors, color_presets)

@@ -428,7 +428,8 @@ class AudioEngine:
             return
         if self.state == self.STATE_STOPPED:
             with self._lock:
-                self._position = 0
+                if self._position >= self._total_frames:
+                    self._position = 0
             self.state = self.STATE_PLAYING
             if not self._simulation_mode:
                 self._start_stream()
@@ -493,6 +494,12 @@ class AudioEngine:
         if self._cd:
             return self._cd.position_seconds
         return self._position / max(1, self._sample_rate)
+
+    @property
+    def has_loaded_audio(self) -> bool:
+        return self._cd_stream is not None or (
+            self._audio_data is not None and len(self._audio_data) > 0
+        )
 
     @property
     def duration_seconds(self) -> float:
