@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QGroupBox,
     QLabel, QPushButton, QLineEdit, QFontComboBox, QSpinBox,
     QColorDialog, QFrame, QScrollArea, QGridLayout, QComboBox,
-    QCheckBox, QDoubleSpinBox, QSizePolicy, QListWidget, QFileDialog,
+    QCheckBox, QDoubleSpinBox, QSlider, QSizePolicy, QListWidget, QFileDialog,
     QInputDialog, QMessageBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
@@ -728,8 +728,10 @@ class FontsTab(QWidget):
 class AudioTab(QWidget):
     output_changed = pyqtSignal(object)
     progress_style_changed = pyqtSignal(str)
+    normalizer_changed = pyqtSignal(dict)
 
-    def __init__(self, devices: list, selected_device=None, progress_style="classic", parent=None):
+    def __init__(self, devices: list, selected_device=None, progress_style="classic",
+                 parent=None, normalizer_config=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -755,6 +757,48 @@ class AudioTab(QWidget):
         )
         group_layout.addWidget(self.cmb_progress, 1, 1)
         layout.addWidget(group)
+
+        normalizer_config = normalizer_config or {}
+        self.chk_normalizer = QCheckBox("Activer la normalisation du niveau sonore")
+        self.chk_normalizer.setChecked(bool(normalizer_config.get("enabled", False)))
+        self.chk_normalizer.setToolTip(
+            "Ajuste le niveau moyen de chaque fichier audio pour réduire les "
+            "écarts de volume entre les morceaux."
+        )
+        self.sld_normalizer_strength = QSlider(Qt.Orientation.Horizontal)
+        self.sld_normalizer_strength.setRange(0, 100)
+        self.sld_normalizer_strength.setSingleStep(5)
+        try:
+            normalizer_strength = int(normalizer_config.get("strength", 50))
+        except (TypeError, ValueError):
+            normalizer_strength = 50
+        self.sld_normalizer_strength.setValue(
+            max(0, min(100, normalizer_strength))
+        )
+        self.lbl_normalizer_strength = QLabel()
+        self.lbl_normalizer_strength.setMinimumWidth(42)
+        self._update_normalizer_strength_label(
+            self.sld_normalizer_strength.value()
+        )
+        normalizer_group = QGroupBox("NORMALISEUR")
+        normalizer_layout = QGridLayout(normalizer_group)
+        normalizer_layout.addWidget(self.chk_normalizer, 0, 0, 1, 3)
+        normalizer_layout.addWidget(QLabel("Puissance :"), 1, 0)
+        normalizer_layout.addWidget(self.sld_normalizer_strength, 1, 1)
+        normalizer_layout.addWidget(self.lbl_normalizer_strength, 1, 2)
+        normalizer_layout.addWidget(
+            QLabel(
+                "À 100 %, vise un niveau moyen de -18 dBFS, avec une hausse "
+                "limitée à +12 dB et les crêtes source plafonnées à -1 dBFS."
+            ),
+            2, 0, 1, 3,
+        )
+        layout.addWidget(normalizer_group)
+        self.sld_normalizer_strength.setEnabled(self.chk_normalizer.isChecked())
+        self.chk_normalizer.toggled.connect(self._on_normalizer_changed)
+        self.sld_normalizer_strength.valueChanged.connect(
+            self._on_normalizer_strength_changed
+        )
         layout.addStretch()
 
     def _on_output_changed(self, index: int):
@@ -765,6 +809,24 @@ class AudioTab(QWidget):
 
     def get_progress_style(self):
         return self.cmb_progress.currentData()
+
+    def get_normalizer_config(self) -> dict:
+        return {
+            "enabled": self.chk_normalizer.isChecked(),
+            "strength": self.sld_normalizer_strength.value(),
+        }
+
+    def _update_normalizer_strength_label(self, strength: int):
+        self.lbl_normalizer_strength.setText(f"{strength} %")
+
+    def _on_normalizer_strength_changed(self, strength: int):
+        self._update_normalizer_strength_label(strength)
+        self._on_normalizer_changed()
+
+    def _on_normalizer_changed(self, _checked=False):
+        enabled = self.chk_normalizer.isChecked()
+        self.sld_normalizer_strength.setEnabled(enabled)
+        self.normalizer_changed.emit(self.get_normalizer_config())
 
 
 # ── Panneau Paramètres complet ────────────────────────────────────────────────
@@ -892,12 +954,14 @@ class SettingsPanel(QWidget):
     folders_changed   = pyqtSignal(list)
     language_changed  = pyqtSignal(str)
     startup_changed   = pyqtSignal(dict)
+    normalizer_changed = pyqtSignal(dict)
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
                  output_device=None, progress_style="classic",
                  library_folders: list = None, language: str = "fr",
-                 startup_config: dict = None, parent=None, color_presets: dict = None):
+                 startup_config: dict = None, parent=None, color_presets: dict = None,
+                 normalizer_config: dict = None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
@@ -905,20 +969,25 @@ class SettingsPanel(QWidget):
 
         self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device,
                     progress_style, library_folders or [], language,
-                    startup_config or {}, color_presets or {})
+                    startup_config or {}, color_presets or {},
+                    normalizer_config or {})
 
     def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device,
                 progress_style, library_folders, language, startup_config,
-                color_presets):
+                color_presets, normalizer_config):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self._tabs = QTabWidget()
         tabs = self._tabs
 
-        self.audio_tab = AudioTab(output_devices, output_device, progress_style)
+        self.audio_tab = AudioTab(
+            output_devices, output_device, progress_style,
+            normalizer_config=normalizer_config,
+        )
         self.audio_tab.output_changed.connect(self.output_changed)
         self.audio_tab.progress_style_changed.connect(self.progress_style_changed)
+        self.audio_tab.normalizer_changed.connect(self.normalizer_changed)
         tabs.addTab(self.audio_tab, tr_tab("settings.tab.audio"))
 
         self.shortcuts_tab = ShortcutsTab(shortcuts)
@@ -1009,6 +1078,9 @@ class SettingsPanel(QWidget):
 
     def get_progress_style(self):
         return self.audio_tab.get_progress_style()
+
+    def get_normalizer_config(self) -> dict:
+        return self.audio_tab.get_normalizer_config()
 
     def get_library_folders(self) -> list:
         return self.library_tab.get_folders()

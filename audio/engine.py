@@ -267,6 +267,11 @@ class AudioEngine:
         self.equalizer_config = EqualizerConfig()
         self._eq_zi = None
         self._eq_sample_rate = 0
+        self.normalizer_enabled = False
+        self.normalizer_strength = 50
+        self._normalization_gain = 1.0
+        self._normalizer_rms: Optional[float] = None
+        self._normalizer_peak: Optional[float] = None
 
         self._audio_data: Optional[np.ndarray] = None
         self._sample_rate: int = 44100
@@ -306,6 +311,9 @@ class AudioEngine:
     def load(self, filepath: str) -> bool:
         """Charge un fichier audio (MP3 ou WAV) en mémoire"""
         self.stop()
+        self._normalization_gain = 1.0
+        self._normalizer_rms = None
+        self._normalizer_peak = None
         try:
             cd_location = parse_cd_uri(filepath)
             if cd_location:
@@ -335,6 +343,7 @@ class AudioEngine:
                 self._total_frames = len(self._audio_data)
                 self._viz_audio_data = np.empty((0, 2), dtype=np.float32)
                 self._lpf.set(self.config.lfe_low_pass_hz, sr)
+                self._normalization_gain = self._compute_normalization_gain()
                 if self.vinyl:
                     self.vinyl.set_sample_rate(sr)
                     self.vinyl.reset_position()
@@ -352,6 +361,52 @@ class AudioEngine:
 
     def _decode_wav_stdlib(self, filepath: str):
         return _decode_wav_stdlib(filepath)
+
+    def set_normalizer(self, enabled: bool, strength: int):
+        """Configure la normalisation et recalcule son gain pour la piste courante."""
+        self.normalizer_enabled = bool(enabled)
+        self.normalizer_strength = max(0, min(100, int(strength)))
+        self._normalization_gain = self._compute_normalization_gain()
+
+    def _measure_normalization_level(
+        self, audio_data: Optional[np.ndarray]
+    ) -> tuple[Optional[float], Optional[float]]:
+        if audio_data is None or not len(audio_data):
+            return None, None
+
+        sum_squares = 0.0
+        peak = 0.0
+        for start in range(0, len(audio_data), 262144):
+            block = audio_data[start:start + 262144].astype(np.float64, copy=False)
+            sum_squares += float(np.sum(block * block))
+            peak = max(peak, float(np.max(np.abs(block))))
+        rms = float(np.sqrt(sum_squares / audio_data.size))
+        return rms, peak
+
+    def _compute_normalization_gain(self) -> float:
+        if (
+            not self.normalizer_enabled
+            or self._audio_data is None
+            or self.normalizer_strength == 0
+        ):
+            return 1.0
+
+        if self._normalizer_rms is None or self._normalizer_peak is None:
+            self._normalizer_rms, self._normalizer_peak = (
+                self._measure_normalization_level(self._audio_data)
+            )
+        rms = self._normalizer_rms
+        peak = self._normalizer_peak
+        if rms is None or peak is None or rms <= 0.0 or peak <= 0.0:
+            return 1.0
+
+        target_rms = 10.0 ** (-18.0 / 20.0)
+        correction_db = 20.0 * np.log10(target_rms / rms)
+        correction_db *= self.normalizer_strength / 100.0
+        correction_db = float(np.clip(correction_db, -18.0, 12.0))
+        gain = 10.0 ** (correction_db / 20.0)
+        peak_ceiling = 10.0 ** (-1.0 / 20.0) / peak
+        return min(gain, peak_ceiling)
 
     # ── Lecture / Contrôle ────────────────────────────────────────────
     def play(self):
@@ -688,6 +743,9 @@ class AudioEngine:
 
         # Egalisation de la source avant la spatialisation.
         chunk = self._equalize(chunk)
+
+        if self._normalization_gain != 1.0:
+            chunk = chunk * self._normalization_gain
 
         # Spatialisation
         spat = self._spatialize(chunk)

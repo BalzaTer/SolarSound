@@ -69,6 +69,7 @@ class SessionState:
     startup_enabled: bool = False
     startup_mode: str = "none"
     startup_value: str = ""
+    normalizer_config: dict = None
 
     def __post_init__(self):
         if self.window is None:
@@ -79,6 +80,8 @@ class SessionState:
             self.spatial_config = {}
         if self.equalizer_config is None:
             self.equalizer_config = {}
+        if self.normalizer_config is None:
+            self.normalizer_config = {}
         if self.vinyl_config is None:
             self.vinyl_config = {}
         if self.shortcuts is None:
@@ -120,6 +123,7 @@ class SessionManager:
                 "progress_style": state.progress_style,
                 "spatial_config": state.spatial_config,
                 "equalizer_config": state.equalizer_config,
+                "normalizer_config": state.normalizer_config,
                 "vinyl_config": getattr(state, "vinyl_config", {}),
                 "shortcuts": getattr(state, "shortcuts", {}),
                 "colors": getattr(state, "colors", {}),
@@ -171,6 +175,10 @@ class SessionManager:
             state.progress_style   = data.get("progress_style", "classic")
             state.spatial_config  = data.get("spatial_config", {})
             state.equalizer_config = data.get("equalizer_config", {})
+            normalizer_config = data.get("normalizer_config", {})
+            state.normalizer_config = (
+                normalizer_config if isinstance(normalizer_config, dict) else {}
+            )
             state.vinyl_config    = data.get("vinyl_config", {})
             state.shortcuts       = data.get("shortcuts", {})
             state.colors          = data.get("colors", {})

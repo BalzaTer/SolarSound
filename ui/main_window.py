@@ -408,6 +408,7 @@ class MainWindow(QMainWindow):
         self._colors    = dict(DEFAULT_COLORS)
         self._font_cfg  = dict(DEFAULT_FONT)
         self._progress_style = "classic"
+        self._normalizer_config = {"enabled": False, "strength": 50}
         self._startup_config = {"enabled": False, "mode": "none", "value": ""}
         self._last_theme_colors = dict(DEFAULT_COLORS)
 
@@ -424,6 +425,11 @@ class MainWindow(QMainWindow):
         # retraduits, ce qui se voit au démarrage.
         session = self._session.load()
         self._color_presets = getattr(session, "color_presets", {}) or {}
+        saved_normalizer_config = getattr(session, "normalizer_config", {}) or {}
+        self._normalizer_config = {
+            "enabled": bool(saved_normalizer_config.get("enabled", False)),
+            "strength": saved_normalizer_config.get("strength", 50),
+        }
         self._startup_config = {
             "enabled": getattr(session, "startup_enabled", False),
             "mode": getattr(session, "startup_mode", "none"),
@@ -708,6 +714,7 @@ class MainWindow(QMainWindow):
             progress_style=self._progress_style,
             spatial_config=spatial,
             equalizer_config=equalizer,
+            normalizer_config=self.settings_panel.get_normalizer_config(),
         )
         state.vinyl_config = vinyl_cfg
         state.visualizer_enabled = self.visualizer.is_animation_enabled()
@@ -747,6 +754,11 @@ class MainWindow(QMainWindow):
         self.playlist_manager_panel.set_theme_colors(self._colors)
         self.settings_panel.set_theme_colors(self._colors)
         self.video_window.controls.set_theme_colors(self._colors)
+        normalizer_config = getattr(state, "normalizer_config", {}) or {}
+        self.engine.set_normalizer(
+            normalizer_config.get("enabled", False),
+            normalizer_config.get("strength", 50),
+        )
 
         # ── Volume ───────────────────────────────────────────────────
         saved_value = state.volume
@@ -1422,8 +1434,10 @@ class MainWindow(QMainWindow):
             self.engine.output_devices(), self.engine.output_device, self._progress_style,
             self._library_folders, get_language(), self._startup_config,
             color_presets=self._color_presets,
+            normalizer_config=self._normalizer_config,
         )
         self.settings_panel.output_changed.connect(self._on_output_changed)
+        self.settings_panel.normalizer_changed.connect(self._on_normalizer_changed)
         self.settings_panel.startup_changed.connect(self._on_startup_changed)
         self.settings_panel.progress_style_changed.connect(self._on_progress_style_changed)
         self.settings_panel.shortcuts_changed.connect(self._on_shortcuts_changed)
@@ -2728,6 +2742,14 @@ class MainWindow(QMainWindow):
 
     def _on_equalizer_config_changed(self, config):
         self.engine.equalizer_config.__dict__.update(config)
+        self._schedule_save()
+
+    def _on_normalizer_changed(self, config):
+        self._normalizer_config = {
+            "enabled": bool(config.get("enabled", False)),
+            "strength": max(0, min(100, int(config.get("strength", 50)))),
+        }
+        self.engine.set_normalizer(**self._normalizer_config)
         self._schedule_save()
 
     def _on_visualizer_toggled(self, checked: bool):

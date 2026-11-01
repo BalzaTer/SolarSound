@@ -655,9 +655,11 @@ class PlaylistManagerPanel(QWidget):
         self.act_load_folder_recursive = QAction(
             " Lire le dossier et ses sous-dossiers", self
         )
-        self.act_load_folder.triggered.connect(self._on_load_folder)
+        self.act_load_folder.triggered.connect(
+            lambda _checked=False: self._on_load_folder("folder")
+        )
         self.act_load_folder_recursive.triggered.connect(
-            lambda: self._on_load_folder("recursive")
+            lambda _checked=False: self._on_load_folder("recursive")
         )
 
         # Les raccourcis ne s'activent que quand l'arbre "Mes Playlists"
