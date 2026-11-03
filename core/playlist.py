@@ -3,9 +3,23 @@
 import json
 import os
 from dataclasses import dataclass, field, asdict
-from typing import List, Optional
+from typing import List, Optional, Dict, Tuple
 from enum import Enum, auto
 import random
+
+try:
+    from .smart_shuffle_config import SmartShuffleConfig, ShuffleMode
+    from .smart_shuffle import (
+        select_first_track,
+        compatibility_score,
+        build_smart_shuffle,
+        select_next_track_with_randomness
+    )
+    SMART_SHUFFLE_AVAILABLE = True
+except (ImportError, ModuleNotFoundError):
+    SMART_SHUFFLE_AVAILABLE = False
+    SmartShuffleConfig = None
+    ShuffleMode = None
 
 
 class PlayMode(Enum):
@@ -52,6 +66,109 @@ class Playlist:
         self.loop_mode: Optional[PlayMode] = None
         self._shuffle_order: List[int] = []
         self._shuffle_pos: int = 0
+        
+        # Shuffle intelligent
+        self._smart_shuffle_config: SmartShuffleConfig = None
+        self._smart_shuffle_order: List[int] = []
+        self._smart_shuffle_pos: int = -1
+        self._compatibility_cache: Dict[Tuple[int, int], float] = {}
+        
+        # Initialiser la config par défaut si disponible
+        if SMART_SHUFFLE_AVAILABLE:
+            self._smart_shuffle_config = SmartShuffleConfig.default()
+        else:
+            self._smart_shuffle_config = None
+
+
+    # --- Propriétés pour le shuffle intelligent ---
+    @property
+    def smart_shuffle_config(self) -> Optional[SmartShuffleConfig]:
+        """Retourne la configuration du shuffle intelligent."""
+        return self._smart_shuffle_config
+
+    @smart_shuffle_config.setter
+    def smart_shuffle_config(self, config: SmartShuffleConfig):
+        """Definit la configuration du shuffle intelligent."""
+        if SMART_SHUFFLE_AVAILABLE and isinstance(config, SmartShuffleConfig):
+            self._smart_shuffle_config = config
+            # Si on est en mode RANDOM et intelligent, reconstruire l'ordre
+            if self.play_mode == PlayMode.RANDOM and self._is_smart_mode():
+                self._rebuild_smart_shuffle()
+
+    def _is_smart_mode(self) -> bool:
+        """Verifie si le mode intelligent est active."""
+        if not SMART_SHUFFLE_AVAILABLE or self._smart_shuffle_config is None:
+            return False
+        return self._smart_shuffle_config.mode == ShuffleMode.INTELLIGENT
+
+    def _get_compatibility(self, idx_a: int, idx_b: int) -> float:
+        """
+        Recupere ou calcule le score de compatibilite entre deux pistes.
+        
+        Args:
+            idx_a: Index de la premiere piste
+            idx_b: Index de la deuxieme piste
+        
+        Returns:
+            Score de compatibilite (0-100)
+        """
+        if not self._is_smart_mode() or not SMART_SHUFFLE_AVAILABLE:
+            return 50.0
+        
+        key = (idx_a, idx_b)
+        if self._smart_shuffle_config.enable_cache and key in self._compatibility_cache:
+            return self._compatibility_cache[key]
+        
+        track_a = self.tracks[idx_a]
+        track_b = self.tracks[idx_b]
+        score = compatibility_score(track_a, track_b, self._smart_shuffle_config)
+        
+        if self._smart_shuffle_config.enable_cache:
+            self._compatibility_cache[key] = score
+        
+        return score
+
+    def _select_next_track_with_randomness(self, candidates: List[Tuple[int, float]]) -> int:
+        """
+        Selectionne la prochaine piste avec le facteur d'aleatoire.
+        
+        Args:
+            candidates: Liste de tuples (index, score)
+        
+        Returns:
+            Index de la piste choisie
+        """
+        if not candidates:
+            return -1
+        
+        if self._smart_shuffle_config is None:
+            return random.choice(candidates)[0]
+        
+        if self._smart_shuffle_config.randomness_factor == 0.0:
+            return candidates[0][0]
+        
+        if self._smart_shuffle_config.randomness_factor == 1.0:
+            return random.choice(candidates)[0]
+        
+        scores = [score for _, score in candidates]
+        max_score = max(scores) if scores else 100.0
+        
+        weights = []
+        for idx, score in candidates:
+            norm_score = score / max_score if max_score > 0 else 0.0
+            weight = (1.0 - self._smart_shuffle_config.randomness_factor) * norm_score + \
+                     self._smart_shuffle_config.randomness_factor * 0.5
+            weight = max(0.01, weight)
+            weights.append(weight)
+        
+        total_weight = sum(weights)
+        if total_weight > 0:
+            weights = [w / total_weight for w in weights]
+        
+        chosen_idx, _ = random.choices(candidates, weights=weights, k=1)[0]
+        return chosen_idx
+
+    # --- Fin des methodes shuffle intelligent ---
 
     # ── Ajout / Suppression ──────────────────────────────────────────
     def add_track(self, track: Track) -> int:
@@ -176,61 +293,141 @@ class Playlist:
         random.shuffle(self._shuffle_order)
         self._shuffle_pos = -1
 
+    def _rebuild_smart_shuffle(self):
+        """Reconstruit l'ordre intelligent."""
+        if not SMART_SHUFFLE_AVAILABLE or not self._is_smart_mode():
+            self._rebuild_shuffle()
+            return
+        
+        # Verifier qu'on a assez de pistes pour le mode intelligent
+        if len(self.tracks) > self._smart_shuffle_config.max_tracks_for_smart_mode:
+            print("[SmartShuffle] Trop de pistes, passage en mode simple")
+            self._rebuild_shuffle()
+            return
+        
+        # Selectionner le premier morceau
+        first_idx = select_first_track(
+            self.tracks,
+            self._smart_shuffle_config,
+            self.current_index
+        )
+        
+        self._smart_shuffle_order = [first_idx]
+        remaining = [i for i in range(len(self.tracks)) if i != first_idx]
+        
+        # Construire le reste de l'ordre
+        while remaining:
+            last_idx = self._smart_shuffle_order[-1]
+            last_track = self.tracks[last_idx]
+            
+            candidates = []
+            for idx in remaining:
+                candidate_track = self.tracks[idx]
+                score = self._get_compatibility(last_idx, idx)
+                candidates.append((idx, score))
+            
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            chosen_idx = self._select_next_track_with_randomness(candidates)
+            self._smart_shuffle_order.append(chosen_idx)
+            remaining.remove(chosen_idx)
+        
+        self._smart_shuffle_pos = -1
+
+
     def _add_to_shuffle(self, new_indices: List[int]):
         """Ajoute des pistes sans refaire l'ordre déjà parcouru."""
-        if not self._shuffle_order or self._shuffle_pos < 0:
-            self._rebuild_shuffle()
-            return
+        if not SMART_SHUFFLE_AVAILABLE or not self._is_smart_mode():
+            # Mode simple
+            if not self._shuffle_order or self._shuffle_pos < 0:
+                self._rebuild_shuffle()
+                return
 
-        random.shuffle(new_indices)
-        insert_start = min(self._shuffle_pos + 2, len(self._shuffle_order))
-        for index in new_indices:
-            insert_at = random.randint(insert_start, len(self._shuffle_order))
-            self._shuffle_order.insert(insert_at, index)
-            insert_start = min(insert_at + 1, len(self._shuffle_order))
+            random.shuffle(new_indices)
+            insert_start = min(self._shuffle_pos + 2, len(self._shuffle_order))
+            for index in new_indices:
+                insert_at = random.randint(insert_start, len(self._shuffle_order))
+                self._shuffle_order.insert(insert_at, index)
+                insert_start = min(insert_at + 1, len(self._shuffle_order))
+        else:
+            # Mode intelligent : reconstruction complète
+            self._rebuild_smart_shuffle()
 
     def _remove_from_shuffle(self, removed_index: int):
-        if not self._shuffle_order:
-            return
-        removed_pos = self._shuffle_order.index(removed_index)
-        self._shuffle_order.pop(removed_pos)
-        self._shuffle_order = [
-            index - 1 if index > removed_index else index
-            for index in self._shuffle_order
-        ]
-        if removed_pos < self._shuffle_pos:
-            self._shuffle_pos -= 1
-        elif removed_pos == self._shuffle_pos:
-            self._shuffle_pos -= 1
-        if not self._shuffle_order:
-            self._shuffle_pos = -1
+        if not SMART_SHUFFLE_AVAILABLE or not self._is_smart_mode():
+            # Mode simple
+            if not self._shuffle_order:
+                return
+            removed_pos = self._shuffle_order.index(removed_index)
+            self._shuffle_order.pop(removed_pos)
+            self._shuffle_order = [
+                index - 1 if index > removed_index else index
+                for index in self._shuffle_order
+            ]
+            if removed_pos < self._shuffle_pos:
+                self._shuffle_pos -= 1
+            elif removed_pos == self._shuffle_pos:
+                self._shuffle_pos -= 1
+            if not self._shuffle_order:
+                self._shuffle_pos = -1
+            else:
+                self._shuffle_pos = min(self._shuffle_pos, len(self._shuffle_order) - 1)
         else:
-            self._shuffle_pos = min(self._shuffle_pos, len(self._shuffle_order) - 1)
+            # Mode intelligent : reconstruction complète
+            self._rebuild_smart_shuffle()
 
     def _next_shuffle(self, loop: bool = True) -> Optional[Track]:
-        if not self._shuffle_order:
-            self._rebuild_shuffle()
-        next_pos = self._shuffle_pos + 1
-        if next_pos >= len(self._shuffle_order):
-            if not loop and self._shuffle_pos >= 0:
-                return None
-            next_pos = 0
-        self._shuffle_pos = next_pos
-        self.current_index = self._shuffle_order[self._shuffle_pos]
-        return self.tracks[self.current_index]
+        if not SMART_SHUFFLE_AVAILABLE or not self._is_smart_mode():
+            # Mode simple
+            if not self._shuffle_order:
+                self._rebuild_shuffle()
+            next_pos = self._shuffle_pos + 1
+            if next_pos >= len(self._shuffle_order):
+                if not loop and self._shuffle_pos >= 0:
+                    return None
+                next_pos = 0
+            self._shuffle_pos = next_pos
+            self.current_index = self._shuffle_order[self._shuffle_pos]
+            return self.tracks[self.current_index]
+        else:
+            # Mode intelligent
+            if not self._smart_shuffle_order:
+                self._rebuild_smart_shuffle()
+            next_pos = self._smart_shuffle_pos + 1
+            if next_pos >= len(self._smart_shuffle_order):
+                if not loop and self._smart_shuffle_pos >= 0:
+                    return None
+                next_pos = 0
+            self._smart_shuffle_pos = next_pos
+            self.current_index = self._smart_shuffle_order[self._smart_shuffle_pos]
+            return self.tracks[self.current_index]
 
     def _prev_shuffle(self, loop: bool = True) -> Optional[Track]:
-        if not self._shuffle_order:
-            self._rebuild_shuffle()
-        previous_pos = self._shuffle_pos - 1
-        if previous_pos < 0:
-            if not loop:
-                previous_pos = 0
-            else:
-                previous_pos = len(self._shuffle_order) - 1
-        self._shuffle_pos = previous_pos
-        self.current_index = self._shuffle_order[self._shuffle_pos]
-        return self.tracks[self.current_index]
+        if not SMART_SHUFFLE_AVAILABLE or not self._is_smart_mode():
+            # Mode simple
+            if not self._shuffle_order:
+                self._rebuild_shuffle()
+            previous_pos = self._shuffle_pos - 1
+            if previous_pos < 0:
+                if not loop:
+                    previous_pos = 0
+                else:
+                    previous_pos = len(self._shuffle_order) - 1
+            self._shuffle_pos = previous_pos
+            self.current_index = self._shuffle_order[self._shuffle_pos]
+            return self.tracks[self.current_index]
+        else:
+            # Mode intelligent
+            if not self._smart_shuffle_order:
+                self._rebuild_smart_shuffle()
+            previous_pos = self._smart_shuffle_pos - 1
+            if previous_pos < 0:
+                if not loop:
+                    previous_pos = 0
+                else:
+                    previous_pos = len(self._smart_shuffle_order) - 1
+            self._smart_shuffle_pos = previous_pos
+            self.current_index = self._smart_shuffle_order[self._smart_shuffle_pos]
+            return self.tracks[self.current_index]
 
     # ── Persistance ──────────────────────────────────────────────────
     def save(self, filepath: str):
