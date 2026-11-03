@@ -468,9 +468,9 @@ class MainWindow(QMainWindow):
         )
         set_language(getattr(session, "language", DEFAULT_LANGUAGE))
 
+        # The tabs require the audio and video engines while they are built.
+        self._init_components()
         self._build_ui()
-        # Initialiser les composants lourds de manière différée
-        QTimer.singleShot(100, self._init_components)
         # Autoriser le glisser-déposer sur la fenêtre principale
         self.setAcceptDrops(True)
         self._build_menu()

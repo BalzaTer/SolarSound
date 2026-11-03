@@ -19,35 +19,23 @@
 - **Maintenant** : La session est passée comme paramètre à MainWindow
 - **Bénéfice** : Évite le double chargement de la session
 
-### 3. Chargement paresseux (lazy loading) des composants lourds
-Les composants suivants sont maintenant initialisés de manière différée :
-- **AudioEngine** : Initialisé dans `_init_components()` au lieu de `__init__`
-- **VideoEngine** : Initialisé dans `_init_components()` au lieu de `__init__`
-- **PlaylistManager** : Initialisé dans `_init_components()` au lieu de `__init__`
-- **PreviewPlayer** : Initialisé dans `_init_components()` au lieu de `__init__`
+### 3. Initialisation des composants avant la construction de l'interface
+Les panneaux utilisent les moteurs et le gestionnaire de playlists pendant leur construction. `_init_components()` doit donc initialiser ces composants avant `_build_ui()` ; sinon, le démarrage échoue avec un moteur à `None`.
 
-### 4. Initialisation différée avec QTimer
-- `_init_components()` est appelé via `QTimer.singleShot(100, self._init_components)`
-- Cela permet à l'UI de s'afficher d'abord, puis les composants lourds sont initialisés
-- **Bénéfice** : L'utilisateur voit le splash screen immédiatement, puis la progression du chargement
+L'initialisation est lancée après l'affichage du splash screen. Celui-ci reste visible pendant le chargement et reçoit les étapes de progression.
 
-### 5. Feedback visuel amélioré
+### 4. Feedback visuel amélioré
 - Le splash screen affiche maintenant la progression du chargement :
   - 15% : Chargement de l'interface
   - 40% : Initialisation du moteur audio
   - 60% : Chargement des playlists
   - 75% : Initialisation du lecteur de prévisualisation
   - 85% : Initialisation du moteur vidéo
-  - 82% : Finalisation de l'interface
+  - 90% : Finalisation de l'interface
   - 100% : Prêt
 
-### 6. Méthodes d'initialisation paresseuse
-Ajout des méthodes suivantes dans MainWindow :
-- `_init_components()` : Initialise tous les composants lourds
-- `_get_engine()` : Getter pour AudioEngine avec initialisation si nécessaire
-- `_get_video_engine()` : Getter pour VideoEngine avec initialisation si nécessaire
-- `_get_playlist_manager()` : Getter pour PlaylistManager avec initialisation si nécessaire
-- `_get_preview_player()` : Getter pour PreviewPlayer avec initialisation si nécessaire
+### 5. Méthodes d'initialisation
+`_init_components()` initialise tous les composants utilisés par l'interface. Les méthodes `_get_engine()`, `_get_video_engine()`, `_get_playlist_manager()` et `_get_preview_player()` les initialisent également si un appelant les sollicite avant leur initialisation.
 
 ## Fichiers modifiés
 
@@ -58,9 +46,8 @@ Ajout des méthodes suivantes dans MainWindow :
 
 2. **ui/main_window.py**
    - Ajout du paramètre `session` et `splash` dans `__init__`
-   - Initialisation paresseuse des composants lourds
-   - Ajout des méthodes d'initialisation différée
-   - Mises à jour de progression du splash pendant l'initialisation
+   - Initialisation des composants avant la construction de l'interface
+   - Mise à jour de la progression du splash
 
 ## Impact sur les performances
 
@@ -83,22 +70,17 @@ Ajout des méthodes suivantes dans MainWindow :
 3. **La session est chargée**
 4. **La langue est définie**
 5. **Le splash screen s'affiche IMMEDIATEMENT**
-6. MainWindow est créé (rapide, sans composants lourds)
-   - L'UI est construite rapidement
-7. **_init_components() est appelé de manière différée**
-   - AudioEngine est initialisé en arrière-plan
-   - VideoEngine est initialisé en arrière-plan
-   - PlaylistManager charge les playlists en arrière-plan
-   - PreviewPlayer est initialisé en arrière-plan
+6. MainWindow initialise les composants dont ses panneaux dépendent
    - **Le splash screen montre la progression**
+7. L'interface est construite avec les composants initialisés
 8. La fenêtre principale s'affiche
 
 ## Résultat attendu
 
-- **Démarrage visuellement plus rapide** : Le splash screen apparaît presque immédiatement
+- **Démarrage visuellement plus rapide** : Le splash screen apparaît avant l'initialisation des composants
 - **Feedback utilisateur amélioré** : L'utilisateur voit la progression du chargement
 - **Temps de démarrage réel réduit** : Évite le double chargement de la session
-- **Expérience utilisateur plus fluide** : Pas de blocage apparent pendant le chargement
+- **Expérience utilisateur plus fluide** : Le splash screen reste visible pendant le chargement
 
 ## Recommandations supplémentaires (non implémentées)
 

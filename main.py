@@ -236,7 +236,7 @@ def main():
             if startup_requested and not open_files:
                 window.start_configured_playback()
             _set_windows_window_icon(window, icon_path)
-            splash.set_progress(82, "Finalisation de l'interface...")
+            splash.set_progress(90, "Finalisation de l'interface...")
             app.processEvents()
             splash.set_progress(100, "Pret")
 
