@@ -359,26 +359,22 @@ class SearchResultsPopup(QListWidget):
 class MainWindow(QMainWindow):
     position_changed = pyqtSignal(float)
 
-    def __init__(self, open_files: List[str] = None):
+    def __init__(self, open_files: List[str] = None, session=None, splash=None):
         super().__init__()
+        self._splash = splash
         self.playlist = Playlist()
-        self.engine = AudioEngine()
+        self.engine = None  # Will be initialized lazily
         self._current_track = None
         self._current_media_path = None
         self._is_handling_error = False
         self._playlist_drop_cursor_active = False
-        self.position_changed.connect(self._on_position_changed)
-        self.engine.on_position_changed = self.position_changed.emit
-        self.engine.on_track_ended = self._on_track_ended
-        self.engine.on_error = self._on_engine_error
 
         self._seeking = False
         self._last_position = 0.0
-        self._session = SessionManager()
+        self._session = session if session is not None else SessionManager()
 
         # Playlists personnalisées avec humeurs (Mes Playlists)
-        self.playlist_manager = PlaylistManager()
-        self.playlist_manager.load_all()
+        self.playlist_manager = None  # Will be initialized lazily
 
         # Écrit périodiquement la position de lecture dans le JSON de session,
         # sans dépendre du debounce des changements ponctuels d'état.
@@ -396,13 +392,7 @@ class MainWindow(QMainWindow):
         self._library_folders: List[str] = []
         self._library_index_cache: list = []
         self._library_index_last_ui_update = 0.0
-        self._preview_player = PreviewPlayer()
-        self._preview_player.excerpt_started.connect(
-            self._on_search_preview_started
-        )
-        self._preview_player.excerpt_failed.connect(
-            self._on_search_preview_failed
-        )
+        self._preview_player = None  # Will be initialized lazily
         # État de la pause automatique du lecteur principal pendant un
         # extrait de recherche (voir _on_search_hover_preview) :
         self._preview_paused_audio = False  # AudioEngine mis en pause pour l'extrait
@@ -423,9 +413,7 @@ class MainWindow(QMainWindow):
         self._icons_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icons")
 
         # Moteur vidéo (QObject — thread Qt principal requis)
-        self.video_engine = VideoEngine(audio_engine=self.engine, parent=self)
-        self.video_engine.on_track_ended = self._on_video_ended
-        self.video_engine.on_error = self._on_engine_error
+        self.video_engine = None  # Will be initialized lazily
 
         # Paramètres UI (raccourcis, couleurs, polices)
         self._shortcuts = dict(DEFAULT_SHORTCUTS)
@@ -445,9 +433,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 680)
         self.setStyleSheet(build_stylesheet(self._colors, self._font_cfg))
 
-        # Charger la session tôt pour appliquer la langue choisie AVANT de
-        # construire l'UI : sinon les onglets seraient créés en français puis
-        # retraduits, ce qui se voit au démarrage.
+        # Utiliser la session passée en paramètre (déjà chargée dans main.py)
+        # ou la charger si non fournie
+        if self._session is None or not hasattr(self._session, 'path'):
+            self._session = SessionManager()
         session = self._session.load()
         self._color_presets = getattr(session, "color_presets", {}) or {}
         saved_normalizer_config = getattr(session, "normalizer_config", {}) or {}
@@ -480,6 +469,8 @@ class MainWindow(QMainWindow):
         set_language(getattr(session, "language", DEFAULT_LANGUAGE))
 
         self._build_ui()
+        # Initialiser les composants lourds de manière différée
+        QTimer.singleShot(100, self._init_components)
         # Autoriser le glisser-déposer sur la fenêtre principale
         self.setAcceptDrops(True)
         self._build_menu()
@@ -492,6 +483,78 @@ class MainWindow(QMainWindow):
         # Fichiers ouverts via "Lire avec" ou argument CLI
         if open_files:
             self._open_files_from_args(open_files)
+
+
+    def _init_components(self):
+        """Initialise les composants lourds de manière différée."""
+        # Initialiser AudioEngine
+        if self.engine is None:
+            self.engine = AudioEngine()
+            self.position_changed.connect(self._on_position_changed)
+            self.engine.on_position_changed = self.position_changed.emit
+            self.engine.on_track_ended = self._on_track_ended
+            self.engine.on_error = self._on_engine_error
+            if self._splash:
+                self._splash.set_progress(40, "Initialisation du moteur audio...")
+                from PyQt6.QtWidgets import QApplication
+                QApplication.instance().processEvents()
+
+        # Initialiser PlaylistManager
+        if self.playlist_manager is None:
+            self.playlist_manager = PlaylistManager()
+            self.playlist_manager.load_all()
+            if self._splash:
+                self._splash.set_progress(60, "Chargement des playlists...")
+                from PyQt6.QtWidgets import QApplication
+                QApplication.instance().processEvents()
+
+        # Initialiser PreviewPlayer
+        if self._preview_player is None:
+            self._preview_player = PreviewPlayer()
+            self._preview_player.excerpt_started.connect(
+                self._on_search_preview_started
+            )
+            self._preview_player.excerpt_failed.connect(
+                self._on_search_preview_failed
+            )
+            if self._splash:
+                self._splash.set_progress(75, "Initialisation du lecteur de prévisualisation...")
+                from PyQt6.QtWidgets import QApplication
+                QApplication.instance().processEvents()
+
+        # Initialiser VideoEngine (doit être après AudioEngine)
+        if self.video_engine is None:
+            self.video_engine = VideoEngine(audio_engine=self.engine, parent=self)
+            self.video_engine.on_track_ended = self._on_video_ended
+            self.video_engine.on_error = self._on_engine_error
+            if self._splash:
+                self._splash.set_progress(85, "Initialisation du moteur vidéo...")
+                from PyQt6.QtWidgets import QApplication
+                QApplication.instance().processEvents()
+
+    def _get_engine(self):
+        """Retourne l'AudioEngine, l'initialisant si nécessaire."""
+        if self.engine is None:
+            self._init_components()
+        return self.engine
+
+    def _get_video_engine(self):
+        """Retourne le VideoEngine, l'initialisant si nécessaire."""
+        if self.video_engine is None:
+            self._init_components()
+        return self.video_engine
+
+    def _get_playlist_manager(self):
+        """Retourne le PlaylistManager, l'initialisant si nécessaire."""
+        if self.playlist_manager is None:
+            self._init_components()
+        return self.playlist_manager
+
+    def _get_preview_player(self):
+        """Retourne le PreviewPlayer, l'initialisant si nécessaire."""
+        if self._preview_player is None:
+            self._init_components()
+        return self._preview_player
 
     # ── Glisser-déposer global (redirige vers _open_files_from_args) ──
     def _playlists_tab_active(self):

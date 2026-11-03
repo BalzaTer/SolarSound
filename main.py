@@ -104,6 +104,22 @@ def main():
         return
     app.aboutToQuit.connect(instance_server.close)
 
+
+    # Charger la session le plus tôt possible pour avoir la langue
+    try:
+        from .core.session import SessionManager
+    except (ImportError, ModuleNotFoundError):
+        from core.session import SessionManager
+    startup_session = SessionManager().load()
+
+    # Mise à jour de la langue dès que possible
+    try:
+        from .core.i18n import set_language, get_language, DEFAULT_LANGUAGE
+    except (ImportError, ModuleNotFoundError):
+        from core.i18n import set_language, get_language, DEFAULT_LANGUAGE
+    session_language = getattr(startup_session, "language", DEFAULT_LANGUAGE)
+    set_language(session_language)
+
     try:
         from .ui.main_window import MainWindow
         from .ui.splash_screen import SplashScreen
@@ -112,6 +128,7 @@ def main():
         from ui.main_window import MainWindow
         from ui.splash_screen import SplashScreen
         from core.session import SessionManager
+
 
     # Icône par défaut pour toutes les fenêtres du processus (fallback
     # avant même que MainWindow ne pose la sienne) ; contribue aussi à ce
@@ -125,7 +142,6 @@ def main():
     splash.setWindowIcon(QIcon(icon_path))
     splash.show()
     _set_windows_window_icon(splash, icon_path)
-    startup_session = SessionManager().load()
     screens = QApplication.screens()
     target_screen = next(
         (screen for screen in screens if screen.name() == startup_session.window.screen_name),
@@ -134,7 +150,7 @@ def main():
     splash.center_on_screen(target_screen)
     app.processEvents()
 
-    splash.set_progress(15, "Preparation des composants audio...")
+    splash.set_progress(15, "Chargement de l'interface...")
     app.processEvents()
 
     window = None
@@ -216,7 +232,7 @@ def main():
     def start_application():
         nonlocal window
         try:
-            window = MainWindow()
+            window = MainWindow(open_files=open_files, session=startup_session, splash=splash)
             if startup_requested and not open_files:
                 window.start_configured_playback()
             _set_windows_window_icon(window, icon_path)
