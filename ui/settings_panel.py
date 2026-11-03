@@ -1016,6 +1016,333 @@ class LanguageTab(QWidget):
         self.lbl_notice.setText(tr("settings.language.restart_notice"))
 
 
+class ShuffleTab(QWidget):
+    """Onglet de configuration du shuffle intelligent."""
+    
+    smart_shuffle_config_changed = pyqtSignal(dict)
+
+    def __init__(self, config: dict, parent=None):
+        super().__init__(parent)
+        self._config = dict(config)
+        self._setup_ui()
+        self._update_from_config()
+
+    def _setup_ui(self):
+        """Initialise l'interface utilisateur."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
+        
+        # Mode principal
+        mode_group = QGroupBox(tr("settings.shuffle.mode.title"))
+        mode_layout = QVBoxLayout()
+        
+        self.cmb_mode = QComboBox()
+        self.cmb_mode.addItem(tr("settings.shuffle.mode.simple"), "simple")
+        self.cmb_mode.addItem(tr("settings.shuffle.mode.intelligent"), "intelligent")
+        self.cmb_mode.currentIndexChanged.connect(self._emit_config_changed)
+        mode_layout.addWidget(self.cmb_mode)
+        
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+        
+        # Paramètres du mode Intelligent
+        self.smart_group = QGroupBox(tr("settings.shuffle.smart_settings"))
+        smart_layout = QVBoxLayout()
+        smart_layout.setSpacing(10)
+        
+        # Poids des critères
+        weights_group = QGroupBox(tr("settings.shuffle.weights"))
+        weights_layout = QVBoxLayout()
+        
+        # BPM Weight
+        bpm_layout = QHBoxLayout()
+        bpm_layout.addWidget(QLabel(tr("settings.shuffle.bpm_weight")))
+        self.slider_bpm_weight = QSlider(Qt.Orientation.Horizontal)
+        self.slider_bpm_weight.setRange(0, 100)
+        self.slider_bpm_weight.valueChanged.connect(self._on_weight_changed)
+        self.lbl_bpm_weight = QLabel("50%")
+        self.lbl_bpm_weight.setFixedWidth(40)
+        self.lbl_bpm_weight.setAlignment(Qt.AlignmentFlag.AlignRight)
+        bpm_layout.addWidget(self.slider_bpm_weight)
+        bpm_layout.addWidget(self.lbl_bpm_weight)
+        weights_layout.addLayout(bpm_layout)
+        
+        # Energy Weight
+        energy_layout = QHBoxLayout()
+        energy_layout.addWidget(QLabel(tr("settings.shuffle.energy_weight")))
+        self.slider_energy_weight = QSlider(Qt.Orientation.Horizontal)
+        self.slider_energy_weight.setRange(0, 100)
+        self.slider_energy_weight.valueChanged.connect(self._on_weight_changed)
+        self.lbl_energy_weight = QLabel("30%")
+        self.lbl_energy_weight.setFixedWidth(40)
+        self.lbl_energy_weight.setAlignment(Qt.AlignmentFlag.AlignRight)
+        energy_layout.addWidget(self.slider_energy_weight)
+        energy_layout.addWidget(self.lbl_energy_weight)
+        weights_layout.addLayout(energy_layout)
+        
+        # Volume Weight
+        volume_layout = QHBoxLayout()
+        volume_layout.addWidget(QLabel(tr("settings.shuffle.volume_weight")))
+        self.slider_volume_weight = QSlider(Qt.Orientation.Horizontal)
+        self.slider_volume_weight.setRange(0, 100)
+        self.slider_volume_weight.valueChanged.connect(self._on_weight_changed)
+        self.lbl_volume_weight = QLabel("20%")
+        self.lbl_volume_weight.setFixedWidth(40)
+        self.lbl_volume_weight.setAlignment(Qt.AlignmentFlag.AlignRight)
+        volume_layout.addWidget(self.slider_volume_weight)
+        volume_layout.addWidget(self.lbl_volume_weight)
+        weights_layout.addLayout(volume_layout)
+        
+        weights_group.setLayout(weights_layout)
+        smart_layout.addWidget(weights_group)
+        
+        # Tolérances
+        tolerances_group = QGroupBox(tr("settings.shuffle.tolerances"))
+        tolerances_layout = QVBoxLayout()
+        
+        # BPM Tolerance
+        bpm_tol_layout = QHBoxLayout()
+        bpm_tol_layout.addWidget(QLabel(tr("settings.shuffle.bpm_tolerance")))
+        self.spn_bpm_tolerance = QDoubleSpinBox()
+        self.spn_bpm_tolerance.setRange(0.0, 50.0)
+        self.spn_bpm_tolerance.setSingleStep(1.0)
+        self.spn_bpm_tolerance.setSuffix(" BPM")
+        self.spn_bpm_tolerance.valueChanged.connect(self._emit_config_changed)
+        bpm_tol_layout.addWidget(self.spn_bpm_tolerance)
+        tolerances_layout.addLayout(bpm_tol_layout)
+        
+        # Enable BPM Multiples
+        self.chk_bpm_multiples = QCheckBox(tr("settings.shuffle.enable_multiples"))
+        self.chk_bpm_multiples.setChecked(True)
+        self.chk_bpm_multiples.stateChanged.connect(self._emit_config_changed)
+        tolerances_layout.addWidget(self.chk_bpm_multiples)
+        
+        # Energy Tolerance
+        energy_tol_layout = QHBoxLayout()
+        energy_tol_layout.addWidget(QLabel(tr("settings.shuffle.energy_tolerance")))
+        self.spn_energy_tolerance = QDoubleSpinBox()
+        self.spn_energy_tolerance.setRange(0.0, 1.0)
+        self.spn_energy_tolerance.setSingleStep(0.05)
+        self.spn_energy_tolerance.valueChanged.connect(self._emit_config_changed)
+        energy_tol_layout.addWidget(self.spn_energy_tolerance)
+        tolerances_layout.addLayout(energy_tol_layout)
+        
+        # Volume Tolerance
+        volume_tol_layout = QHBoxLayout()
+        volume_tol_layout.addWidget(QLabel(tr("settings.shuffle.volume_tolerance")))
+        self.spn_volume_tolerance = QDoubleSpinBox()
+        self.spn_volume_tolerance.setRange(0.0, 1.0)
+        self.spn_volume_tolerance.setSingleStep(0.05)
+        self.spn_volume_tolerance.valueChanged.connect(self._emit_config_changed)
+        volume_tol_layout.addWidget(self.spn_volume_tolerance)
+        tolerances_layout.addLayout(volume_tol_layout)
+        
+        tolerances_group.setLayout(tolerances_layout)
+        smart_layout.addWidget(tolerances_group)
+        
+        # Premier morceau
+        first_track_group = QGroupBox(tr("settings.shuffle.first_track"))
+        first_track_layout = QVBoxLayout()
+        
+        # Min Duration
+        duration_layout = QHBoxLayout()
+        duration_layout.addWidget(QLabel(tr("settings.shuffle.min_duration")))
+        self.spn_first_track_duration = QSpinBox()
+        self.spn_first_track_duration.setRange(0, 300)
+        self.spn_first_track_duration.setSuffix(" " + tr("settings.shuffle.seconds"))
+        self.spn_first_track_duration.valueChanged.connect(self._emit_config_changed)
+        duration_layout.addWidget(self.spn_first_track_duration)
+        first_track_layout.addLayout(duration_layout)
+        
+        # Selection Method
+        selection_layout = QHBoxLayout()
+        selection_layout.addWidget(QLabel(tr("settings.shuffle.selection_method")))
+        self.cmb_first_track_selection = QComboBox()
+        self.cmb_first_track_selection.addItems([
+            tr("settings.shuffle.random"),
+            tr("settings.shuffle.high_energy"),
+            tr("settings.shuffle.low_energy"),
+            tr("settings.shuffle.balanced")
+        ])
+        self.cmb_first_track_selection.currentIndexChanged.connect(self._emit_config_changed)
+        selection_layout.addWidget(self.cmb_first_track_selection)
+        first_track_layout.addLayout(selection_layout)
+        
+        first_track_group.setLayout(first_track_layout)
+        smart_layout.addWidget(first_track_group)
+        
+        # Aléatoire contrôlé
+        randomness_group = QGroupBox(tr("settings.shuffle.randomness"))
+        randomness_layout = QVBoxLayout()
+        
+        randomness_hint = QLabel(tr("settings.shuffle.randomness_hint"))
+        randomness_hint.setWordWrap(True)
+        randomness_hint.setStyleSheet("color: #888;")
+        randomness_layout.addWidget(randomness_hint)
+        
+        randomness_slider_layout = QHBoxLayout()
+        randomness_slider_layout.addWidget(QLabel(tr("settings.shuffle.randomness_level")))
+        self.slider_randomness = QSlider(Qt.Orientation.Horizontal)
+        self.slider_randomness.setRange(0, 100)
+        self.slider_randomness.valueChanged.connect(self._on_randomness_changed)
+        self.lbl_randomness = QLabel("30%")
+        self.lbl_randomness.setFixedWidth(40)
+        self.lbl_randomness.setAlignment(Qt.AlignmentFlag.AlignRight)
+        randomness_slider_layout.addWidget(self.slider_randomness)
+        randomness_slider_layout.addWidget(self.lbl_randomness)
+        randomness_layout.addLayout(randomness_slider_layout)
+        
+        randomness_group.setLayout(randomness_layout)
+        smart_layout.addWidget(randomness_group)
+        
+        # Cache
+        cache_layout = QHBoxLayout()
+        self.chk_enable_cache = QCheckBox(tr("settings.shuffle.enable_cache"))
+        self.chk_enable_cache.setChecked(True)
+        self.chk_enable_cache.stateChanged.connect(self._emit_config_changed)
+        cache_layout.addWidget(self.chk_enable_cache)
+        cache_layout.addStretch()
+        smart_layout.addLayout(cache_layout)
+        
+        self.smart_group.setLayout(smart_layout)
+        layout.addWidget(self.smart_group)
+        
+        # Boutons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        btn_reset = QPushButton(tr("settings.reset"))
+        btn_reset.clicked.connect(self._reset_to_defaults)
+        buttons_layout.addWidget(btn_reset)
+        
+        layout.addLayout(buttons_layout)
+        
+        scroll.setWidget(inner)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(scroll)
+
+    def _update_from_config(self):
+        """Met à jour l'UI depuis la configuration."""
+        # Mode
+        mode = self._config.get("mode", "simple")
+        for i in range(self.cmb_mode.count()):
+            if self.cmb_mode.itemData(i) == mode:
+                self.cmb_mode.setCurrentIndex(i)
+                break
+        
+        # Poids
+        self.slider_bpm_weight.setValue(self._config.get("bpm_weight", 50))
+        self.slider_energy_weight.setValue(self._config.get("energy_weight", 30))
+        self.slider_volume_weight.setValue(self._config.get("volume_weight", 20))
+        self._update_weight_labels()
+        
+        # Tolérances
+        self.spn_bpm_tolerance.setValue(self._config.get("bpm_tolerance", 5.0))
+        self.chk_bpm_multiples.setChecked(self._config.get("enable_bpm_multiples", True))
+        self.spn_energy_tolerance.setValue(self._config.get("energy_tolerance", 0.1))
+        self.spn_volume_tolerance.setValue(self._config.get("volume_tolerance", 0.1))
+        
+        # Premier morceau
+        self.spn_first_track_duration.setValue(int(self._config.get("first_track_min_duration", 30.0)))
+        selection_methods = ["random", "high_energy", "low_energy", "balanced"]
+        selection_translations = [
+            tr("settings.shuffle.random"),
+            tr("settings.shuffle.high_energy"),
+            tr("settings.shuffle.low_energy"),
+            tr("settings.shuffle.balanced")
+        ]
+        current_method = self._config.get("first_track_selection", "balanced")
+        for i, method in enumerate(selection_methods):
+            if method == current_method:
+                self.cmb_first_track_selection.setCurrentIndex(i)
+                break
+        
+        # Aléatoire
+        self.slider_randomness.setValue(int(self._config.get("randomness_factor", 0.3) * 100))
+        self._update_randomness_label()
+        
+        # Cache
+        self.chk_enable_cache.setChecked(self._config.get("enable_cache", True))
+        
+        # Activer/désactiver les paramètres intelligents
+        self._update_smart_params_enabled()
+
+    def _on_weight_changed(self):
+        """Gère le changement des poids."""
+        self._config["bpm_weight"] = self.slider_bpm_weight.value()
+        self._config["energy_weight"] = self.slider_energy_weight.value()
+        self._config["volume_weight"] = self.slider_volume_weight.value()
+        
+        # Normaliser pour que la somme fasse 100
+        total = self._config["bpm_weight"] + self._config["energy_weight"] + self._config["volume_weight"]
+        if total > 0 and total != 100:
+            # Ajuster automatiquement le plus grand
+            max_key = max(["bpm_weight", "energy_weight", "volume_weight"], 
+                         key=lambda k: self._config[k])
+            self._config[max_key] += 100 - total
+            getattr(self, f"slider_{max_key}").setValue(self._config[max_key])
+        
+        self._update_weight_labels()
+        self._emit_config_changed()
+
+    def _update_weight_labels(self):
+        """Met à jour les labels des poids."""
+        self.lbl_bpm_weight.setText(f"{self.slider_bpm_weight.value()}%")
+        self.lbl_energy_weight.setText(f"{self.slider_energy_weight.value()}%")
+        self.lbl_volume_weight.setText(f"{self.slider_volume_weight.value()}%")
+
+    def _on_randomness_changed(self):
+        """Gère le changement du facteur d'aléatoire."""
+        self._config["randomness_factor"] = self.slider_randomness.value() / 100.0
+        self._update_randomness_label()
+        self._emit_config_changed()
+
+    def _update_randomness_label(self):
+        """Met à jour le label du facteur d'aléatoire."""
+        self.lbl_randomness.setText(f"{self.slider_randomness.value()}%")
+
+    def _emit_config_changed(self):
+        """Émet le signal de changement de configuration."""
+        self.smart_shuffle_config_changed.emit(self._config)
+
+    def _update_smart_params_enabled(self):
+        """Active/désactive les paramètres selon le mode."""
+        is_intelligent = self._config.get("mode", "simple") == "intelligent"
+        self.smart_group.setEnabled(is_intelligent)
+
+    def _reset_to_defaults(self):
+        """Réinitialise aux valeurs par défaut."""
+        from ..core.smart_shuffle_config import SmartShuffleConfig
+        default_config = SmartShuffleConfig.default()
+        self._config = default_config.to_dict()
+        self._update_from_config()
+        self._emit_config_changed()
+
+    def get_config(self) -> dict:
+        """Retourne la configuration actuelle."""
+        return self._config
+
+    def set_config(self, config: dict):
+        """Définit une nouvelle configuration."""
+        self._config = dict(config)
+        self._update_from_config()
+
+    def retranslate(self):
+        """Met à jour les textes pour la langue actuelle."""
+        # Reconstruire l'UI pour mettre à jour les traductions
+        old_config = self._config.copy()
+        self._setup_ui()
+        self._config = old_config
+        self._update_from_config()
+
+
 class SettingsPanel(QWidget):
     """Panneau de paramètres avec onglets audio, raccourcis, couleurs et polices."""
 
@@ -1033,26 +1360,28 @@ class SettingsPanel(QWidget):
     normalizer_changed = pyqtSignal(dict)
     library_refresh_requested = pyqtSignal()
     library_bpm_analysis_requested = pyqtSignal()
+    smart_shuffle_config_changed = pyqtSignal(dict)
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
                  output_device=None, progress_style="classic",
                  library_folders: list = None, language: str = "fr",
                  startup_config: dict = None, parent=None, color_presets: dict = None,
-                 normalizer_config: dict = None):
+                 normalizer_config: dict = None, smart_shuffle_config: dict = None):
         super().__init__(parent)
         shortcuts = shortcuts or dict(DEFAULT_SHORTCUTS)
         colors    = colors    or dict(DEFAULT_COLORS)
         font_cfg  = font_cfg  or dict(DEFAULT_FONT)
+        smart_shuffle_config = smart_shuffle_config or {}
 
         self._setup_ui(shortcuts, colors, font_cfg, output_devices or [], output_device,
                     progress_style, library_folders or [], language,
                     startup_config or {}, color_presets or {},
-                    normalizer_config or {})
+                    normalizer_config or {}, smart_shuffle_config)
 
     def _setup_ui(self, shortcuts, colors, font_cfg, output_devices, output_device,
                 progress_style, library_folders, language, startup_config,
-                color_presets, normalizer_config):
+                color_presets, normalizer_config, smart_shuffle_config):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -1098,6 +1427,10 @@ class SettingsPanel(QWidget):
             self.library_bpm_analysis_requested
         )
         tabs.addTab(self.library_tab, tr_tab("settings.tab.library"))
+
+        self.shuffle_tab = ShuffleTab(smart_shuffle_config)
+        self.shuffle_tab.smart_shuffle_config_changed.connect(self.smart_shuffle_config_changed)
+        tabs.addTab(self.shuffle_tab, tr_tab("settings.tab.shuffle"))
 
         self.language_tab = LanguageTab(language)
         self.language_tab.language_changed.connect(self.language_changed)
