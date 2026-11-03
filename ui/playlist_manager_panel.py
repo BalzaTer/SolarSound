@@ -442,6 +442,8 @@ class PlaylistManagerPanel(QWidget):
     load_requested = pyqtSignal(str, str)
     # Chargement groupé : (folder_id, scope="folder"|"recursive")
     load_folder_requested = pyqtSignal(str, str)
+    bpm_analysis_requested = pyqtSignal(str, str)
+    bpm_analysis_all_requested = pyqtSignal()
 
     def __init__(self, manager: PlaylistManager, get_library_folders=None, parent=None):
         super().__init__(parent)
@@ -541,6 +543,14 @@ class PlaylistManagerPanel(QWidget):
         library_buttons_row.addWidget(self.btn_backup_all)
         left_col.addLayout(library_buttons_row)
 
+        self.btn_analyze_bpm_all = QPushButton(
+            " Analyser les BPM de toutes les playlists"
+        )
+        self.btn_analyze_bpm_all.setToolTip(
+            "Analyser les pistes de toutes les playlists, y compris celles des dossiers"
+        )
+        left_col.addWidget(self.btn_analyze_bpm_all)
+
         scan_buttons_row = QHBoxLayout()
         self.btn_scan_library = QPushButton(" Scanner les dossiers de musique")
         self.btn_scan_library.setToolTip(
@@ -617,11 +627,8 @@ class PlaylistManagerPanel(QWidget):
 
     def _create_actions(self):
         """
-        Actions pour les 7 opérations de l'arbre "Mes Playlists" — chacune
-        porte son raccourci clavier et alimente aussi le menu contextuel
-        (clic droit). Seules "Nouvelle" et "Nouveau dossier" ont un bouton
-        visible ; les 5 autres ne sont accessibles qu'au clic droit ou au
-        raccourci.
+        Actions de gestion des playlists. Les opérations disponibles dans
+        l'arbre alimentent aussi le menu contextuel (clic droit).
         """
         self.act_new = QAction(" Nouvelle playlist", self)
         self.act_new.setShortcut(QKeySequence("Ctrl+N"))
@@ -661,6 +668,8 @@ class PlaylistManagerPanel(QWidget):
         self.act_load_folder_recursive.triggered.connect(
             lambda _checked=False: self._on_load_folder("recursive")
         )
+        self.act_analyze_bpm = QAction(" Analyser / inscrire le BPM", self)
+        self.act_analyze_bpm.triggered.connect(self._on_analyze_bpm_selected)
 
         # Les raccourcis ne s'activent que quand l'arbre "Mes Playlists"
         # (ou l'un de ses enfants) a le focus, pour ne pas entrer en
@@ -686,6 +695,7 @@ class PlaylistManagerPanel(QWidget):
         self.act_move_to_folder.setEnabled(has_playlist)
         self.act_load_folder.setEnabled(has_folder)
         self.act_load_folder_recursive.setEnabled(has_folder)
+        self.act_analyze_bpm.setEnabled(has_selection)
 
         menu = QMenu(self)
         menu.addAction(self.act_new)
@@ -696,6 +706,9 @@ class PlaylistManagerPanel(QWidget):
         menu.addAction(self.act_move_up)
         menu.addAction(self.act_move_down)
         menu.addAction(self.act_move_to_folder)
+        if has_selection:
+            menu.addSeparator()
+            menu.addAction(self.act_analyze_bpm)
         if has_folder:
             menu.addSeparator()
             menu.addAction(self.act_load_folder)
@@ -735,6 +748,9 @@ class PlaylistManagerPanel(QWidget):
         self.btn_new.clicked.connect(self._on_new)
         self.btn_new_folder.clicked.connect(self._on_new_folder)
         self.btn_backup_all.clicked.connect(self._on_backup_all)
+        self.btn_analyze_bpm_all.clicked.connect(
+            self.bpm_analysis_all_requested
+        )
         self.btn_scan_library.clicked.connect(self._on_scan_library)
 
         self.btn_edit.clicked.connect(self._on_edit)
@@ -743,6 +759,15 @@ class PlaylistManagerPanel(QWidget):
         self.btn_load.clicked.connect(self._on_load)
         self.btn_remove_track.clicked.connect(self._on_remove_track)
         self.list_tracks.order_changed.connect(self._on_tracks_reordered)
+
+    def _on_analyze_bpm_selected(self):
+        playlist = self._get_current_playlist()
+        if playlist is not None:
+            self.bpm_analysis_requested.emit("playlist", playlist.id)
+            return
+        folder = self._get_current_folder()
+        if folder is not None:
+            self.bpm_analysis_requested.emit("folder", folder.id)
 
     def _set_details_enabled(self, enabled: bool):
         for w in (self.btn_edit, self.btn_add_files, self.btn_add_folder, self.btn_load):

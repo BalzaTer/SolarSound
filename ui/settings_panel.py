@@ -890,6 +890,7 @@ class LibraryTab(QWidget):
 
     folders_changed = pyqtSignal(list)
     refresh_requested = pyqtSignal()
+    bpm_analysis_requested = pyqtSignal()
 
     def __init__(self, folders: list = None, parent=None):
         super().__init__(parent)
@@ -928,8 +929,10 @@ class LibraryTab(QWidget):
         self.btn_refresh.setIcon(QIcon(icon_path))
         self.btn_refresh.setToolTip("Rafraîchir et réindexer les dossiers")
         self.btn_refresh.setAccessibleName("Rafraîchir et réindexer les dossiers")
+        self.btn_analyze_bpm = QPushButton(" Analyser et inscrire les BPM")
         buttons_row.addWidget(self.btn_add)
         buttons_row.addWidget(self.btn_remove)
+        buttons_row.addWidget(self.btn_analyze_bpm)
         buttons_row.addWidget(self.btn_refresh)
         group_layout.addLayout(buttons_row)
 
@@ -939,6 +942,7 @@ class LibraryTab(QWidget):
         self.btn_add.clicked.connect(self._on_add)
         self.btn_remove.clicked.connect(self._on_remove)
         self.btn_refresh.clicked.connect(self.refresh_requested)
+        self.btn_analyze_bpm.clicked.connect(self.bpm_analysis_requested)
 
     def _on_add(self):
         folder = QFileDialog.getExistingDirectory(self, "Choisir un dossier de musique")
@@ -1028,6 +1032,7 @@ class SettingsPanel(QWidget):
     position_save_interval_changed = pyqtSignal(int)
     normalizer_changed = pyqtSignal(dict)
     library_refresh_requested = pyqtSignal()
+    library_bpm_analysis_requested = pyqtSignal()
 
     def __init__(self, shortcuts: dict = None, colors: dict = None,
                  font_cfg: dict = None, output_devices: list = None,
@@ -1089,6 +1094,9 @@ class SettingsPanel(QWidget):
         self.library_tab = LibraryTab(library_folders)
         self.library_tab.folders_changed.connect(self.folders_changed)
         self.library_tab.refresh_requested.connect(self.library_refresh_requested)
+        self.library_tab.bpm_analysis_requested.connect(
+            self.library_bpm_analysis_requested
+        )
         tabs.addTab(self.library_tab, tr_tab("settings.tab.library"))
 
         self.language_tab = LanguageTab(language)

@@ -4,6 +4,7 @@ import os
 import time
 import sys
 import random
+from datetime import datetime
 from typing import List, Optional
 
 from PyQt6.QtWidgets import (
@@ -25,6 +26,10 @@ try:
     from .theme import STYLESHEET
     from .playlist_widget import FavoriteButton, PlaylistWidget
     from .playlist_manager_panel import PlaylistManagerPanel
+    from .bpm_progress_dialog import (
+        run_bpm_tagging,
+        run_bpm_tagging_in_folders,
+    )
     from .spatial_panel import SpatialPanel
     from .rotation_panel import RotationPanel
     from .vinyl_panel import VinylPanel
@@ -67,6 +72,10 @@ except (ImportError, ModuleNotFoundError):
     from ui.theme import STYLESHEET
     from ui.playlist_widget import FavoriteButton, PlaylistWidget
     from ui.playlist_manager_panel import PlaylistManagerPanel
+    from ui.bpm_progress_dialog import (
+        run_bpm_tagging,
+        run_bpm_tagging_in_folders,
+    )
     from ui.spatial_panel import SpatialPanel
     from ui.rotation_panel import RotationPanel
     from ui.vinyl_panel import VinylPanel
@@ -1444,6 +1453,12 @@ class MainWindow(QMainWindow):
         self.playlist_manager_panel.load_folder_requested.connect(
             self._on_load_custom_folder
         )
+        self.playlist_manager_panel.bpm_analysis_requested.connect(
+            self._on_playlist_bpm_analysis_requested
+        )
+        self.playlist_manager_panel.bpm_analysis_all_requested.connect(
+            self._on_all_playlists_bpm_analysis_requested
+        )
         self._playlists_tab_index = 2
         tabs.insertTab(
             self._playlists_tab_index,
@@ -1501,6 +1516,9 @@ class MainWindow(QMainWindow):
         self.settings_panel.folders_changed.connect(self._on_library_folders_changed)
         self.settings_panel.library_refresh_requested.connect(
             self._on_refresh_library_index
+        )
+        self.settings_panel.library_bpm_analysis_requested.connect(
+            self._on_library_bpm_analysis_requested
         )
         self.settings_panel.language_changed.connect(self._on_language_changed)
         self.settings_panel.startup_tab.set_sources(
@@ -1787,6 +1805,183 @@ class MainWindow(QMainWindow):
             )
             return
         self._rebuild_library_index()
+
+    def _on_playlist_bpm_analysis_requested(self, scope: str, item_id: str):
+        if scope == "playlist":
+            playlist = self.playlist_manager.get_playlist(item_id)
+            playlists = [playlist] if playlist else []
+            scope_label = "la playlist sélectionnée"
+        elif scope == "folder":
+            playlists = [
+                playlist
+                for playlist in self.playlist_manager.get_all_playlists()
+                if playlist.folder_id == item_id
+            ]
+            folder = self.playlist_manager.get_folder(item_id)
+            scope_label = (
+                f"le dossier « {folder.name} »"
+                if folder else "le dossier sélectionné"
+            )
+        else:
+            QMessageBox.warning(
+                self, "Analyse BPM", f"Périmètre de playlist inconnu : {scope}"
+            )
+            return
+
+        paths = [
+            track.path
+            for playlist in playlists
+            for track in playlist.tracks
+        ]
+        self._start_bpm_analysis(paths, scope_label)
+
+    def _on_all_playlists_bpm_analysis_requested(self):
+        paths = [
+            track.path
+            for playlist in self.playlist_manager.get_all_playlists()
+            for track in playlist.tracks
+        ]
+        self._start_bpm_analysis(paths, "toutes les playlists")
+
+    def _on_library_bpm_analysis_requested(self):
+        if not self._library_folders:
+            QMessageBox.information(
+                self,
+                "Analyse BPM",
+                "Ajoutez d'abord un dossier musical dans les paramètres de bibliothèque.",
+            )
+            return
+        self._start_bpm_analysis(
+            [],
+            "les dossiers de bibliothèque configurés",
+            folders=self._library_folders,
+        )
+
+    def _start_bpm_analysis(self, paths: list, scope_label: str, folders=None):
+        supported = set(Playlist.SUPPORTED_FORMATS)
+        unique_paths = []
+        seen_paths = set()
+        for path in paths:
+            if not isinstance(path, str) or not os.path.isfile(path):
+                continue
+            if os.path.splitext(path)[1].lower() not in supported:
+                continue
+            normalized = os.path.normcase(os.path.abspath(path))
+            if normalized not in seen_paths:
+                seen_paths.add(normalized)
+                unique_paths.append(path)
+
+        if folders is None and not unique_paths:
+            QMessageBox.information(
+                self,
+                "Analyse BPM",
+                f"Aucun fichier audio disponible dans {scope_label}.",
+            )
+            return
+
+        prompt = QMessageBox(self)
+        prompt.setWindowTitle("Analyse et inscription des BPM")
+        prompt.setIcon(QMessageBox.Icon.Question)
+        target_count = (
+            f"{len(unique_paths)} fichier(s) audio"
+            if folders is None
+            else f"les fichiers audio contenus dans {scope_label}"
+        )
+        prompt.setText(
+            f"Cette action traitera {target_count}.\n\n"
+            "Les fichiers modifiés seront copiés temporairement afin de "
+            "permettre une restauration en cas d'annulation. "
+            "« Fermer et conserver » arrête l'analyse en gardant les "
+            "modifications déjà effectuées."
+        )
+        replace_button = prompt.addButton(
+            "Remplacer les BPM existants",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        fill_button = prompt.addButton(
+            "Compléter uniquement les BPM vides",
+            QMessageBox.ButtonRole.ActionRole,
+        )
+        prompt.addButton(QMessageBox.StandardButton.Cancel)
+        prompt.setDefaultButton(fill_button)
+        prompt.exec()
+        if prompt.clickedButton() not in (replace_button, fill_button):
+            return
+        replace_existing = prompt.clickedButton() is replace_button
+
+        if folders is None:
+            result, error = run_bpm_tagging(
+                self, unique_paths, replace_existing
+            )
+        else:
+            result, error = run_bpm_tagging_in_folders(
+                self,
+                folders,
+                supported,
+                replace_existing,
+            )
+        if error:
+            QMessageBox.critical(
+                self,
+                "Analyse BPM impossible",
+                f"L'analyse a échoué : {error}",
+            )
+            return
+        if result is None:
+            return
+
+        written = result["written"]
+        if written:
+            written_by_path = {
+                os.path.normcase(os.path.abspath(path)): bpm
+                for path, bpm in written.items()
+            }
+            modified_at = datetime.now().isoformat()
+            for playlist in self.playlist_manager.get_all_playlists():
+                changed = False
+                for track in playlist.tracks:
+                    normalized = os.path.normcase(os.path.abspath(track.path))
+                    bpm = written_by_path.get(normalized)
+                    if bpm is not None:
+                        track.bpm = bpm
+                        changed = True
+                if changed:
+                    playlist.modified_at = modified_at
+            if not self.playlist_manager.save_all():
+                QMessageBox.warning(
+                    self,
+                    "Analyse BPM",
+                    "Les tags audio ont été modifiés, mais les BPM des "
+                    "playlists n'ont pas pu être enregistrés dans leur fichier JSON.",
+                )
+            self.playlist_manager_panel.refresh_playlists()
+
+        if result["rolled_back"]:
+            summary = (
+                f"Annulation terminée : {result['restored']} fichier(s) restauré(s)."
+            )
+        elif result["stopped"]:
+            summary = (
+                f"Analyse arrêtée. {len(written)} fichier(s) modifié(s) "
+                "ont été conservés."
+            )
+        else:
+            summary = (
+                f"Analyse terminée : {len(written)} fichier(s) modifié(s), "
+                f"{result['skipped']} BPM déjà renseigné(s) conservé(s)."
+            )
+
+        if result["errors"]:
+            details = "\n".join(result["errors"][:10])
+            if len(result["errors"]) > 10:
+                details += f"\n… et {len(result['errors']) - 10} autre(s) erreur(s)"
+            QMessageBox.warning(
+                self,
+                "Analyse BPM terminée avec des erreurs",
+                summary + "\n\n" + details,
+            )
+        else:
+            QMessageBox.information(self, "Analyse BPM", summary)
 
     def _on_language_changed(self, code: str):
         """Applique la nouvelle langue et retraduit ce qui peut l'être à chaud."""
