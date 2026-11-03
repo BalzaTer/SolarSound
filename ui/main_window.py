@@ -34,9 +34,11 @@ try:
     from .rotation_panel import RotationPanel
     from .vinyl_panel import VinylPanel
     from .equalizer_panel import EqualizerPanel
+    from .smart_shuffle_panel import SmartShufflePanel
     from .visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from .progress_widget import ClickableProgressSlider, IntensityProgressBar
     from ..core.playlist import Playlist, PlayMode, Track
+    from ..core.smart_shuffle_config import SmartShuffleConfig, ShuffleMode
     from ..core.session import (
         POSITION_SAVE_INTERVAL_SECONDS,
         SessionManager,
@@ -82,6 +84,7 @@ except (ImportError, ModuleNotFoundError):
     from ui.visualizer_widget import SolarVisualizer, N_BANDS as VIZ_N_BANDS
     from ui.progress_widget import ClickableProgressSlider, IntensityProgressBar
     from core.playlist import Playlist, PlayMode, Track
+    from core.smart_shuffle_config import SmartShuffleConfig, ShuffleMode
     from core.session import (
         POSITION_SAVE_INTERVAL_SECONDS,
         SessionManager,
@@ -1327,10 +1330,24 @@ class MainWindow(QMainWindow):
         self.btn_loop.setFixedSize(32, 32)
 
         self._order_mode = PlayMode.SEQUENTIAL
+        self._smart_shuffle_config = SmartShuffleConfig.from_dict(
+            self.session.smart_shuffle_config if hasattr(self.session, 'smart_shuffle_config') else {})
+        self._smart_shuffle_panel = None
         self._loop_mode = None
 
         mode_layout.addWidget(self.btn_loop)
         mode_layout.addWidget(self.btn_order)
+        
+        # Bouton de configuration du shuffle intelligent
+        self.btn_smart_shuffle = QPushButton()
+        self.btn_smart_shuffle.setIcon(self._tinted_icon("settings.svg", self._colors["accent"]))
+        self.btn_smart_shuffle.setIconSize(QSize(18, 18))
+        self.btn_smart_shuffle.setToolTip("Configurer le mode aléatoire intelligent")
+        self.btn_smart_shuffle.setCheckable(False)
+        self.btn_smart_shuffle.setFixedSize(32, 32)
+        self.btn_smart_shuffle.clicked.connect(self._on_smart_shuffle_settings)
+        mode_layout.addWidget(self.btn_smart_shuffle)
+        
         mode_layout.addWidget(self.btn_favorite_track)
 
         self.btn_order.clicked.connect(self._on_order_toggle)
@@ -2816,6 +2833,27 @@ class MainWindow(QMainWindow):
             self._loop_mode = None
 
         self._apply_play_mode()
+
+    def _on_smart_shuffle_settings(self):
+        """Ouvre le panneau de configuration du shuffle intelligent."""
+        if self._smart_shuffle_panel is None:
+            self._smart_shuffle_panel = SmartShufflePanel(self._smart_shuffle_config, self)
+            self._smart_shuffle_panel.config_changed.connect(self._on_smart_shuffle_config_changed)
+        
+        self._smart_shuffle_panel.set_config(self._smart_shuffle_config)
+        self._smart_shuffle_panel.show()
+        self._smart_shuffle_panel.raise_()
+        self._smart_shuffle_panel.activateWindow()
+
+    def _on_smart_shuffle_config_changed(self, config):
+        """Gère le changement de configuration du shuffle intelligent."""
+        self._smart_shuffle_config = config
+        self.playlist.smart_shuffle_config = config
+        self.session.smart_shuffle_config = config.to_dict()
+        self._schedule_save()
+        
+        if self.playlist.play_mode == PlayMode.RANDOM:
+            self.playlist.set_current(self.playlist.current_index)
 
     def _apply_play_mode(self):
         self.playlist.loop_mode = self._loop_mode
