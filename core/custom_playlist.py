@@ -58,6 +58,56 @@ class CustomTrack(Track):
 
 
 @dataclass
+class SmartTrack(CustomTrack):
+    """
+    Extension de CustomTrack avec métadonnées de transition pour le shuffle intelligent.
+    
+    Attributes:
+        start_energy: Niveau d'intensité au début (0.0-1.0)
+        end_energy: Niveau d'intensité à la fin (0.0-1.0)
+        start_volume: Volume relatif au début (0.0-1.0)
+        end_volume: Volume relatif à la fin (0.0-1.0)
+        is_analyzed: Flag indiquant si les métadonnées de transition sont complètes
+    """
+    start_energy: Optional[float] = None
+    end_energy: Optional[float] = None
+    start_volume: Optional[float] = None
+    end_volume: Optional[float] = None
+    is_analyzed: bool = False
+
+    def to_dict(self) -> dict:
+        """Convertit en dictionnaire JSON"""
+        d = super().to_dict()
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "SmartTrack":
+        """Crée depuis un dictionnaire JSON"""
+        return cls(**d)
+
+    @classmethod
+    def from_custom_track(cls, track: CustomTrack) -> "SmartTrack":
+        """Convertit un CustomTrack en SmartTrack."""
+        return cls(
+            path=track.path,
+            title=track.title,
+            artist=track.artist,
+            album=track.album,
+            duration=track.duration,
+            bpm=track.bpm,
+            key=track.key,
+            energy=track.energy,
+            genre=track.genre,
+            file_size=track.file_size,
+            start_energy=None,
+            end_energy=None,
+            start_volume=None,
+            end_volume=None,
+            is_analyzed=False
+        )
+
+
+@dataclass
 class PlaylistFolder:
     """Dossier permettant de regrouper des playlists dans l'onglet Mes Playlists"""
     id: str = field(default_factory=lambda: str(uuid.uuid4()))

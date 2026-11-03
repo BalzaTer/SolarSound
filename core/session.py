@@ -87,6 +87,9 @@ class SessionState:
     normalizer_config: dict = None
     resume_position_on_startup: bool = True
     position_save_interval_seconds: int = POSITION_SAVE_INTERVAL_SECONDS
+    
+    # Shuffle intelligent
+    smart_shuffle_config: dict = None
 
     def __post_init__(self):
         if self.window is None:
@@ -109,6 +112,8 @@ class SessionState:
             self.color_presets = {}
         if self.font_cfg is None:
             self.font_cfg = {}
+        if self.smart_shuffle_config is None:
+            self.smart_shuffle_config = {}
 
 
 class SessionManager:
@@ -166,6 +171,7 @@ class SessionManager:
                 "startup_mode": getattr(state, "startup_mode", "none"),
                 "startup_value": getattr(state, "startup_value", ""),
                 "resume_position_on_startup": resume_position,
+                "smart_shuffle_config": state.smart_shuffle_config,
             }
             if not resume_position:
                 data.pop("player_position")
@@ -233,6 +239,7 @@ class SessionManager:
                     POSITION_SAVE_INTERVAL_SECONDS,
                 )
             )
+            state.smart_shuffle_config = data.get("smart_shuffle_config", {})
         except Exception as e:
             print(f"[Session] Impossible de charger : {e}")
         return state
