@@ -295,10 +295,10 @@ TRANSLATIONS = {
 
     # Panneau Paramètres : onglet Shuffle
     "settings.tab.shuffle": {
-        "fr": "🎲  Mode Aléatoire", "en": "🎲  Shuffle Mode", "de": "🎲  Zufallsmodus", "es": "🎲  Modo Aleatorio",
-        "it": "🎲  Modalità Casuale", "pt": "🎲  Modo Aleatório", "zh": "🎲  随机模式",
-        "ja": "🎲  シャッフルモード", "co": "🎲  Modu Casuale", "nl": "🎲  Willekeurige Modus",
-        "hi": "🎲  रैंडम मोड",
+        "fr": "Mode Aléatoire", "en": "Shuffle Mode", "de": "Zufallsmodus", "es": "Modo Aleatorio",
+        "it": "Modalità Casuale", "pt": "Modo Aleatório", "zh": "随机模式",
+        "ja": "シャッフルモード", "co": "Modu Casuale", "nl": "Willekeurige Modus",
+        "hi": "रैंडम मोड",
     },
     "settings.shuffle.mode.title": {
         "fr": "Mode de Lecture", "en": "Play Mode", "de": "Wiedergabemodus", "es": "Modo de Reproducción",

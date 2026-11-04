@@ -1467,6 +1467,7 @@ class SettingsPanel(QWidget):
             (self.colors_tab, "palette.svg"),
             (self.fonts_tab, "police.svg"),
             (self.library_tab, "dossier.svg"),
+            (self.shuffle_tab, "aleatoire.svg"),
             (self.language_tab, "langue.svg"),
         )
         for index, (widget, icon_name) in enumerate(tab_icons):
@@ -1483,8 +1484,10 @@ class SettingsPanel(QWidget):
         self._tabs.setTabText(3, tr_tab("settings.tab.colors"))
         self._tabs.setTabText(4, tr_tab("settings.tab.fonts"))
         self._tabs.setTabText(5, tr_tab("settings.tab.library"))
-        self._tabs.setTabText(6, tr_tab("settings.tab.language"))
+        self._tabs.setTabText(6, tr_tab("settings.tab.shuffle"))
+        self._tabs.setTabText(7, tr_tab("settings.tab.language"))
         self.language_tab.retranslate()
+        self.shuffle_tab.retranslate()
 
     def get_shortcuts(self) -> dict:
         return self.shortcuts_tab.get_shortcuts()
