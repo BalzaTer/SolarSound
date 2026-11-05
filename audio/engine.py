@@ -179,6 +179,27 @@ def _decode_soundfile(filepath: str):
     return _float_audio_to_int16_stereo(data), sr
 
 
+def decode_audio_file_float(filepath: str) -> tuple[np.ndarray, int]:
+    """Decode audio to stereo float without reducing it to 16-bit PCM."""
+    if SOUNDFILE_OK:
+        try:
+            data, sample_rate = sf.read(
+                filepath, dtype="float32", always_2d=True
+            )
+            return _float_audio_to_stereo(data), sample_rate
+        except Exception:
+            pass
+
+    if filepath.lower().endswith(".wav"):
+        try:
+            return _decode_wav_stdlib_float(filepath)
+        except Exception:
+            pass
+
+    data, sample_rate = decode_audio_file(filepath)
+    return data.astype(np.float32) / 32768.0, sample_rate
+
+
 def decode_audio_excerpt(filepath: str, excerpt_seconds: float):
     """Decode a centered excerpt without decoding the whole file when possible."""
     if SOUNDFILE_OK:
@@ -205,11 +226,16 @@ def decode_audio_excerpt(filepath: str, excerpt_seconds: float):
 
 
 def _float_audio_to_int16_stereo(data: np.ndarray) -> np.ndarray:
+    data = _float_audio_to_stereo(data)
+    return (data * 32767).clip(-32768, 32767).astype(np.int16)
+
+
+def _float_audio_to_stereo(data: np.ndarray) -> np.ndarray:
     if data.shape[1] == 1:
         data = np.column_stack([data[:, 0], data[:, 0]])
     elif data.shape[1] > 2:
         data = data[:, :2]
-    return (data * 32767).clip(-32768, 32767).astype(np.int16)
+    return data
 
 
 def _decode_wav_stdlib(filepath: str):
@@ -237,6 +263,35 @@ def _decode_wav_stdlib(filepath: str):
     else:
         data = data.reshape(-1, ch)[:, :2]
     return data, sr
+
+
+def _decode_wav_stdlib_float(filepath: str) -> tuple[np.ndarray, int]:
+    """Decode PCM WAV to normalized float while preserving its source depth."""
+    with _wave_mod.open(filepath, "rb") as source:
+        sample_rate = source.getframerate()
+        channels = source.getnchannels()
+        sample_width = source.getsampwidth()
+        raw = source.readframes(source.getnframes())
+
+    if sample_width == 1:
+        data = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128) / 128
+    elif sample_width == 2:
+        data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768
+    elif sample_width == 3:
+        bytes_24 = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
+        values = (
+            bytes_24[:, 0].astype(np.int32)
+            | (bytes_24[:, 1].astype(np.int32) << 8)
+            | (bytes_24[:, 2].astype(np.int32) << 16)
+        )
+        values = (values ^ 0x800000) - 0x800000
+        data = values.astype(np.float32) / 8388608
+    elif sample_width == 4:
+        data = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648
+    else:
+        raise ValueError(f"sample_width={sample_width} non supporte")
+
+    return _float_audio_to_stereo(data.reshape(-1, channels)), sample_rate
 
 
 class AudioEngine:
@@ -337,7 +392,7 @@ class AudioEngine:
             if data is None:
                 return False
             with self._lock:
-                self._audio_data = data.astype(np.float32) / 32768.0
+                self._audio_data = data.astype(np.float32, copy=False)
                 self._sample_rate = sr
                 self._position = 0
                 self._total_frames = len(self._audio_data)
@@ -354,7 +409,7 @@ class AudioEngine:
             return False
 
     def _decode_file(self, filepath: str):
-        return decode_audio_file(filepath)
+        return decode_audio_file_float(filepath)
 
     def _decode_soundfile(self, filepath: str):
         return _decode_soundfile(filepath)
